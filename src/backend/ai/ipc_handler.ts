@@ -14,10 +14,11 @@
 
 import { addHandler } from '../ipc'
 
-import { runApply, runDiagnose } from './orchestrator'
+import { runAdvise, runApply, runDiagnose } from './orchestrator'
 import { realHeroicBridge } from './realHeroicBridge'
 import { heroicContextProvider } from './heroicContextProvider'
 import { helmsmanConfirm } from './heroicConfirm'
+import { resolveAiProvider } from './helmsmanAiProvider'
 
 // 唯讀診斷：provider 後端權威組 context + 讀 log → analyze→recommend→plans。不碰 bridge。
 addHandler('helmsmanDiagnose', (_e, args) =>
@@ -29,4 +30,11 @@ addHandler('helmsmanDiagnose', (_e, args) =>
 // install_winetricks 白名單免確認直接執行。
 addHandler('helmsmanApplyAction', (_e, args) =>
   runApply(args, realHeroicBridge, heroicContextProvider, helmsmanConfirm)
+)
+
+// LLM 模糊判斷 / 自然語言除錯：provider 組 context + analyze → 注入【金鑰閘】AiProvider 求建議。
+// 不碰 bridge（只求建議）。resolveAiProvider() 在未設 ANTHROPIC_API_KEY 時回 null，
+// runAdvise 隨即回 HelmsmanError（不 crash）。
+addHandler('helmsmanAdvise', (_e, args) =>
+  runAdvise(args, heroicContextProvider, resolveAiProvider())
 )

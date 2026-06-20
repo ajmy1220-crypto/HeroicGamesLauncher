@@ -6,7 +6,9 @@
  * 只送 { appName, runner }；context + log 由後端權威組（window.api.helmsmanDiagnose）。
  * 顯示判定（verdict）+ 偵測到的問題（signals，含命中 log 行）+ 建議修正。
  * 建議可【套用】（helmsmanApplyAction）：須確認的動作由後端彈【原生確認框】（§12.9 主程序
- * 權威，renderer 無法偽造）；install_winetricks 白名單免確認。不接 LLM 對話（aiAdvisor 待後）。
+ * 權威，renderer 無法偽造）；install_winetricks 白名單免確認。
+ * 規則層之外另有【Ask AI】（helmsmanAdvise）：模糊→AI 層，給 LLM 的人話解釋 + 建議（同走
+ * 確認閘套用路徑）；未設 ANTHROPIC_API_KEY 時後端回 error，按鈕仍在但顯示「未設定」。
  */
 
 import './AiAssistantPanel.css'
@@ -17,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { Runner } from 'common/types'
 import type { DiagnoseResult, HelmsmanError } from 'backend/ai/orchestrator'
+import type { AdvisorResult } from 'backend/ai/aiAdvisor'
 import type { ExecutionResult } from 'backend/ai/actionExecutor'
 import type {
   Backend,
@@ -46,11 +49,18 @@ export default function AiAssistantPanel({
   const [applyResults, setApplyResults] = useState<
     Record<number, ApplyOutcome>
   >({})
+  // LLM 模糊判斷（helmsmanAdvise）：規則層之外的人話解釋 + AI 建議。
+  const [advice, setAdvice] = useState<AdvisorResult | null>(null)
+  const [advising, setAdvising] = useState(false)
+  const [adviceError, setAdviceError] = useState<string | null>(null)
 
   const runDiagnosis = useCallback(async () => {
     setLoading(true)
     setError(null)
     setApplyResults({})
+    // 重診 → 舊 AI 建議與套用結果都過時，清掉。
+    setAdvice(null)
+    setAdviceError(null)
     try {
       const res = await window.api.helmsmanDiagnose({ appName, runner })
       if ('error' in res) {
@@ -96,7 +106,29 @@ export default function AiAssistantPanel({
     [appName, runner, t]
   )
 
-  const busy = loading || applyingIndex !== null
+  const askAi = useCallback(async () => {
+    setAdvising(true)
+    setAdviceError(null)
+    try {
+      const res = await window.api.helmsmanAdvise({ appName, runner })
+      if ('error' in res) {
+        setAdviceError(res.error)
+        setAdvice(null)
+      } else {
+        setAdvice(res)
+      }
+    } catch (e) {
+      setAdviceError(
+        e instanceof Error
+          ? e.message
+          : t('game.ai.advise.failed', 'AI request failed')
+      )
+    } finally {
+      setAdvising(false)
+    }
+  }, [appName, runner, t])
+
+  const busy = loading || advising || applyingIndex !== null
   const hasSignals = (result?.analysis.signals.length ?? 0) > 0
 
   return (
@@ -156,6 +188,17 @@ export default function AiAssistantPanel({
               )}
             </p>
           )}
+          <AiAdvice
+            advice={advice}
+            advising={advising}
+            adviceError={adviceError}
+            onAsk={askAi}
+            busy={busy}
+            applyingIndex={applyingIndex}
+            applyResults={applyResults}
+            onApply={applyAction}
+            t={t}
+          />
         </>
       )}
     </div>
@@ -203,13 +246,16 @@ function Recommendations({
   applyingIndex,
   applyResults,
   onApply,
-  t
+  t,
+  indexOffset = 0
 }: {
   actions: RecommendedAction[]
   applyingIndex: number | null
   applyResults: Record<number, ApplyOutcome>
   onApply: (action: RecommendedAction, index: number) => void
   t: TFunction
+  /** apply 狀態的索引偏移：規則建議用 0、AI 建議用 AI_INDEX_OFFSET，避免兩組索引相撞。 */
+  indexOffset?: number
 }) {
   if (actions.length === 0) return null
   return (
@@ -218,9 +264,10 @@ function Recommendations({
         {t('game.ai.recommendations', 'Suggested fixes')}
       </p>
       {actions.map((act, i) => {
-        const outcome = applyResults[i]
+        const index = i + indexOffset
+        const outcome = applyResults[index]
         return (
-          <div key={i} className="aiPanelAction">
+          <div key={index} className="aiPanelAction">
             <div className="aiPanelActionBody">
               {act.kind !== 'none' && (
                 <p className="aiPanelActionTitle">{actionTitle(act, t)}</p>
@@ -240,10 +287,10 @@ function Recommendations({
               <button
                 type="button"
                 className="button is-primary aiPanelApplyBtn"
-                onClick={() => onApply(act, i)}
+                onClick={() => onApply(act, index)}
                 disabled={applyingIndex !== null}
               >
-                {applyingIndex === i
+                {applyingIndex === index
                   ? t('game.ai.apply.applying', 'Applying…')
                   : t('game.ai.apply.btn', 'Apply')}
               </button>
@@ -251,6 +298,78 @@ function Recommendations({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// AI 建議的 apply 索引偏移（規則建議用 0..N，AI 用 1000+i，兩組共用 applyResults/applyingIndex 不撞）。
+const AI_INDEX_OFFSET = 1000
+
+function AiAdvice({
+  advice,
+  advising,
+  adviceError,
+  onAsk,
+  busy,
+  applyingIndex,
+  applyResults,
+  onApply,
+  t
+}: {
+  advice: AdvisorResult | null
+  advising: boolean
+  adviceError: string | null
+  onAsk: () => void
+  busy: boolean
+  applyingIndex: number | null
+  applyResults: Record<number, ApplyOutcome>
+  onApply: (action: RecommendedAction, index: number) => void
+  t: TFunction
+}) {
+  return (
+    <div className="aiPanelSection">
+      <div className="aiPanelAdviseHead">
+        <p className="aiPanelSectionTitle">
+          {t('game.ai.advise.title', 'Ask AI')}
+        </p>
+        <button
+          type="button"
+          className="button is-primary aiPanelApplyBtn"
+          onClick={onAsk}
+          disabled={busy}
+        >
+          {advising
+            ? t('game.ai.advise.asking', 'Asking AI…')
+            : advice
+              ? t('game.ai.advise.again', 'Ask again')
+              : t('game.ai.advise.btn', 'Ask AI')}
+        </button>
+      </div>
+      {adviceError && (
+        <p className="aiPanelApplyResult" data-tone="err">
+          {adviceError}
+        </p>
+      )}
+      {advice && (
+        <>
+          <p className="aiPanelAdviceText">{advice.explanation}</p>
+          <Recommendations
+            actions={advice.suggestedActions}
+            indexOffset={AI_INDEX_OFFSET}
+            applyingIndex={applyingIndex}
+            applyResults={applyResults}
+            onApply={onApply}
+            t={t}
+          />
+          <p className="aiPanelHint">
+            {t(
+              'game.ai.advise.disclaimer',
+              'AI suggestions — review before applying.'
+            )}
+            {` · ${advice.provider}`}
+          </p>
+        </>
+      )}
     </div>
   )
 }

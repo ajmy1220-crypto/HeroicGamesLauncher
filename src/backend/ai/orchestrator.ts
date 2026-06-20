@@ -26,10 +26,13 @@
  */
 
 import { executeAction, planAll } from './actionExecutor'
+import { advise } from './aiAdvisor'
 import { analyze } from './logAnalyzer'
 import { recommend } from './recommendationEngine'
 
 import type { ExecutionResult, PlannedCall } from './actionExecutor'
+import type { AdvisorResult } from './aiAdvisor'
+import type { AiProvider } from './aiProvider'
 import type { HeroicBridge } from './heroicBridge'
 import type {
   AnalyzerContext,
@@ -310,5 +313,61 @@ export async function runApply(
     })
   } catch (err) {
     return { error: `helmsmanApplyAction 失敗：${errorMessage(err)}` }
+  }
+}
+
+/**
+ * helmsmanAdvise 的核心：驗 { appName, runner, userQuestion? } → provider 後端權威組
+ * context + 讀 log + analyze → 注入的 AiProvider 求 LLM 建議（aiAdvisor.advise）。
+ *
+ * 模糊→AI 層（藍圖核心）：規則層（diagnose）給確定性結論；本 channel 給 LLM 的人話解釋 +
+ * 建議。aiProvider 由 ipc_handler 依金鑰注入；null（未設 ANTHROPIC_API_KEY）→ 回 error、
+ * 不 crash。userQuestion 選用（有＝自然語言除錯；無＝對 evidence 模糊判斷）。
+ *
+ * §12.9：advise 內部已把每條 LLM 建議的 autoApplyable 強制為 false（執行期 invariant）——
+ * AI 來源動作一律須經 helmsmanApplyAction 的確認閘，與規則層建議走同一條套用路徑。
+ * 本 channel 不碰 bridge（只求建議，不執行）。
+ */
+export async function runAdvise(
+  raw: unknown,
+  provider: ContextProvider,
+  aiProvider: AiProvider | null
+): Promise<AdvisorResult | HelmsmanError> {
+  try {
+    if (typeof raw !== 'object' || raw === null) {
+      return { error: 'helmsmanAdvise：參數必須是物件' }
+    }
+    const o = raw as Record<string, unknown>
+
+    const ref = readGameRef(o)
+    if (ref === null) {
+      return { error: 'helmsmanAdvise：appName / runner 不合法' }
+    }
+    if (aiProvider === null) {
+      return {
+        error: 'LLM 未設定：請設定 ANTHROPIC_API_KEY 後重啟，才能用 AI 建議'
+      }
+    }
+
+    // userQuestion 為不可信輸入：須是非空字串才採用，否則走模糊判斷模式。
+    const userQuestion =
+      typeof o.userQuestion === 'string' && o.userQuestion.trim() !== ''
+        ? o.userQuestion
+        : undefined
+
+    const context = await provider.assembleGameContext(ref.appName, ref.runner)
+    const log = coerceLog(provider.readGameLog(ref.appName, ref.runner))
+    if (log === null) {
+      return { error: 'helmsmanAdvise：log 讀取失敗（非字串）' }
+    }
+    const analyzerContext: AnalyzerContext = {
+      osVersion: context.osVersion,
+      currentBackend: context.currentBackend
+    }
+    const analysis = analyze(log, analyzerContext)
+
+    return await advise({ analysis, context, userQuestion }, aiProvider)
+  } catch (err) {
+    return { error: `helmsmanAdvise 失敗：${errorMessage(err)}` }
   }
 }

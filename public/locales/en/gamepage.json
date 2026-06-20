@@ -130,6 +130,14 @@
                 "wine": "Reinstall Wine variant",
                 "winetricks": "Install {{verb}}"
             },
+            "advise": {
+                "again": "Ask again",
+                "asking": "Asking AI…",
+                "btn": "Ask AI",
+                "disclaimer": "AI suggestions — review before applying.",
+                "failed": "AI request failed",
+                "title": "Ask AI"
+            },
             "apply": {
                 "applying": "Applying…",
                 "btn": "Apply",

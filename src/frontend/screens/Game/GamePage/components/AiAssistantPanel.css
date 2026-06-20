@@ -142,3 +142,17 @@
 .aiPanelApplyResult[data-tone='err'] {
   color: var(--danger);
 }
+
+.aiPanelAdviseHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aiPanelAdviceText {
+  margin: 8px 0 0;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}

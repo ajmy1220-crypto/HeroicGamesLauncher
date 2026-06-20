@@ -17,12 +17,15 @@ import {
   coerceLog,
   diagnose,
   normalizeContext,
+  runAdvise,
   runApply,
   runDiagnose
 } from '../orchestrator'
 
 import type { ContextProvider, HelmsmanError } from '../orchestrator'
 import type { ExecutionResult } from '../actionExecutor'
+import type { AdvisorResult } from '../aiAdvisor'
+import type { AiProvider, AiResponse } from '../aiProvider'
 import type { GameContext, RecommendedAction } from '../types'
 
 // ── fixtures ──────────────────────────────────────────────────────
@@ -78,6 +81,22 @@ const makeFakeBridge = () => ({
 /** fake confirm（jest.fn 可設回 true/false），對應注入 runApply 的第四參。 */
 const makeFakeConfirm = (result: boolean) =>
   jest.fn(() => Promise.resolve(result))
+
+/** 結構相容的 fake AiProvider（替身 LLM，jest.fn 可斷言被呼叫與收到的 req）。 */
+const makeFakeAiProvider = (
+  res: AiResponse = { text: 'AI：可能是缺 d3dcompiler', suggestedActions: [] }
+): AiProvider => ({
+  name: 'fake-ai',
+  complete: jest.fn(async () => res)
+})
+
+/** runAdvise 回 AdvisorResult 或 HelmsmanError——收斂成前者（否則直接失敗）。 */
+function asAdvice(res: AdvisorResult | HelmsmanError): AdvisorResult {
+  if ('error' in res) {
+    throw new Error(`預期 AdvisorResult，卻得 error：${res.error}`)
+  }
+  return res
+}
 
 /** runApply / runDiagnose 回 ExecutionResult 或 HelmsmanError——收斂成前者（否則直接失敗）。 */
 function asExecution(res: ExecutionResult | HelmsmanError): ExecutionResult {
@@ -333,5 +352,66 @@ describe('輸入驗證', () => {
     expect('error' in badKind).toBe(true)
     expect('error' in badRunner).toBe(true)
     expect(bridge.switchBackend).not.toHaveBeenCalled()
+  })
+})
+
+// ── runAdvise：LLM 模糊→AI 層 channel（§12.9 經 advise 仍硬化）──────────
+
+describe('runAdvise — LLM 建議 channel', () => {
+  test('有 provider → 回 AdvisorResult（explanation + provider 名），complete 呼叫 1 次', async () => {
+    const ai = makeFakeAiProvider()
+    const res = asAdvice(await runAdvise(APP, makeFakeProvider(), ai))
+    expect(res.explanation).toBe('AI：可能是缺 d3dcompiler')
+    expect(res.provider).toBe('fake-ai')
+    expect(ai.complete).toHaveBeenCalledTimes(1)
+  })
+
+  test('aiProvider=null（未設金鑰）→ 回 error，且不組 context（短路在 provider 之前）', async () => {
+    const ctx = makeFakeProvider()
+    const res = await runAdvise(APP, ctx, null)
+    expect('error' in res).toBe(true)
+    expect((res as HelmsmanError).error).toMatch(/LLM 未設定|ANTHROPIC_API_KEY/)
+    expect(ctx.assembleGameContext).not.toHaveBeenCalled()
+  })
+
+  test('provider.complete throw → 收口成結構化 error（不外洩堆疊）', async () => {
+    const ai: AiProvider = {
+      name: 'boom',
+      complete: jest.fn(async () => {
+        throw new Error('network down')
+      })
+    }
+    const res = await runAdvise(APP, makeFakeProvider(), ai)
+    expect('error' in res).toBe(true)
+    expect((res as HelmsmanError).error).toMatch(/helmsmanAdvise 失敗/)
+  })
+
+  test('壞 runner → error（在 aiProvider 之前，complete 未被呼叫）', async () => {
+    const ai = makeFakeAiProvider()
+    const res = await runAdvise(
+      { appName: 'X', runner: 'epic' },
+      makeFakeProvider(),
+      ai
+    )
+    expect('error' in res).toBe(true)
+    expect(ai.complete).not.toHaveBeenCalled()
+  })
+
+  test('§12.9：LLM 回 autoApplyable:true 的動作 → advise 強制 false（經 runAdvise 仍成立）', async () => {
+    const ai = makeFakeAiProvider({
+      text: 'x',
+      suggestedActions: [
+        {
+          kind: 'switch_backend',
+          params: { backend: 'gptk' },
+          reason: 'r',
+          autoApplyable: true,
+          confidence: 0.8
+        }
+      ]
+    })
+    const res = asAdvice(await runAdvise(APP, makeFakeProvider(), ai))
+    // 釘：若 advise 的 autoApplyable 強制被移除，這裡會變 true → 紅。
+    expect(res.suggestedActions[0].autoApplyable).toBe(false)
   })
 })

@@ -54,6 +54,7 @@ import type { GetLogFileArgs } from 'backend/logger/paths'
 // 不帶 runtime 依賴、不把 realHeroicBridge / heroicContextProvider 拉進 common。
 import type { RecommendedAction } from 'backend/ai/types'
 import type { ExecutionResult } from 'backend/ai/actionExecutor'
+import type { AdvisorResult } from 'backend/ai/aiAdvisor'
 import type { DiagnoseResult, HelmsmanError } from 'backend/ai/orchestrator'
 
 // ts-prune-ignore-next
@@ -166,6 +167,13 @@ interface AsyncIPCFunctions {
     runner: Runner
     action: RecommendedAction
   }) => Promise<ExecutionResult | HelmsmanError>
+  // helmsmanAdvise：模糊→AI 層。userQuestion 選用（有＝自然語言除錯）。aiProvider 由後端
+  // 依金鑰注入；未設 ANTHROPIC_API_KEY 時回 HelmsmanError（不 crash）。
+  helmsmanAdvise: (args: {
+    appName: string
+    runner: Runner
+    userQuestion?: string
+  }) => Promise<AdvisorResult | HelmsmanError>
   kill: (appName: string, runner: Runner) => Promise<void>
   checkDiskSpace: (folder: string) => Promise<DiskSpaceData>
   callTool: (args: Tools) => Promise<void>
