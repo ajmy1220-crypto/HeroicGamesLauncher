@@ -21,7 +21,7 @@
  * Phase 3 之前在無 live repo 環境下仍可完整編譯與測試。
  */
 
-import type { Backend, GameContext } from './types';
+import type { Backend, GameContext } from './types'
 
 // ── 遊戲辨識 ──────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ import type { Backend, GameContext } from './types';
  * 辨識一款遊戲所需的最小資訊（appName + runner）。
  * 從 GameContext 取子集，避免把整包執行脈絡（含後端/OS 等）漏進 bridge 簽章。
  */
-export type GameRef = Pick<GameContext, 'appName' | 'runner'>;
+export type GameRef = Pick<GameContext, 'appName' | 'runner'>
 
 // ── 契約介面 ──────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ export interface HeroicBridge {
    *   adapter 直接 import 呼叫（backend 內部，不走 renderer）。verb→component、game→(runner,appName)。
    *   ⚠ 前置：該遊戲須有有效 wineVersion + 已初始化的 prefix，否則 runWithArgs 靜默早退。
    */
-  installWinetricks(args: { verb: string; game: GameRef }): Promise<void>;
+  installWinetricks(args: { verb: string; game: GameRef }): Promise<void>
 
   /**
    * → Heroic v2.22.0：macOS 上【無單一 backend 欄位】。後端 = `wineVersion`(WineInstallation 物件) +
@@ -54,21 +54,21 @@ export interface HeroicBridge {
    *   `DXVK.installRemove`(toggleDXVK backup/restore)。完整對照表見 docs/phase3b-heroic-integration.md §0/§1。
    *   ⚠ 後端不可用(使用者沒裝該 runtime)應 throw。§11：actionExecutor 已先擋 Steam 客戶端 prefix。
    */
-  switchBackend(args: { backend: Backend; game: GameRef }): Promise<void>;
+  switchBackend(args: { backend: Backend; game: GameRef }): Promise<void>
 
   /**
    * → Heroic v2.22.0：`DXVK.installRemove(gameSettings, 'dxvk', 'backup')`（tools/index.ts:205；
    *   'backup'=裝/啟用）。adapter 先 `GameConfig.get(appName).getSettings()` 取 gs。macOS 自動
    *   remap 'dxvk'→'dxvk-macOS'。⚠ toolkit/`-DXMT` prefix 上自動 no-op。
    */
-  installDxvk(args: { game: GameRef }): Promise<void>;
+  installDxvk(args: { game: GameRef }): Promise<void>
 
   /**
    * → Heroic v2.22.0：【無 reinstall API】。adapter 自組：從 `wine-releases` store 把 variant
    *   resolve 成 WineVersionInfo → `removeWineVersion(release)` 再 `installWineVersion(release,onProgress)`
    *   （wine/manager/utils.ts:262/353）。⚠ wine 變體是全域安裝，`game` 在此用不到。
    */
-  reinstallWineVariant(args: { variant: string; game: GameRef }): Promise<void>;
+  reinstallWineVariant(args: { variant: string; game: GameRef }): Promise<void>
 
   /**
    * → Heroic v2.22.0：【無 installSteam】。= 通用 sideload 流程，照 SideloadDialog/index.tsx(handleRunExe)：
@@ -76,14 +76,18 @@ export interface HeroicBridge {
    *   (storeManagers/sideload/library.ts:10) → 覆寫 winePrefix/wineVersion → `runWineCommand({commandParts,
    *   wait:true, protonVerb:'runinprefix'})`(launcher.ts:1495)。⚠ addNewApp 回 void;介面宜回傳新建 appName。
    */
-  installSteam(args: { backend: Backend }): Promise<void>;
+  installSteam(args: { backend: Backend }): Promise<void>
 
   /**
    * → Heroic v2.22.0：`GameConfig.get(appName).setSetting(key, value)`（game_config.ts:46/321，
    *   同步、內部 flush()）。⚠ runner 不參與定址（只用 appName）。別誤用 GlobalConfig.setSetting(改全域)
    *   或 writeConfig(整份取代)。切後端的 wineVersion 是物件非字串(屬 switchBackend)。
    */
-  changeSetting(args: { key: string; value: unknown; game: GameRef }): Promise<void>;
+  changeSetting(args: {
+    key: string
+    value: unknown
+    game: GameRef
+  }): Promise<void>
 }
 
 // ── live 模式預設：未接線即大聲失敗 ───────────────────────────────
@@ -96,26 +100,28 @@ export interface HeroicBridge {
  */
 export const notWiredBridge: HeroicBridge = {
   installWinetricks() {
-    return Promise.reject(notWiredError());
+    return Promise.reject(notWiredError())
   },
   switchBackend() {
-    return Promise.reject(notWiredError());
+    return Promise.reject(notWiredError())
   },
   installDxvk() {
-    return Promise.reject(notWiredError());
+    return Promise.reject(notWiredError())
   },
   reinstallWineVariant() {
-    return Promise.reject(notWiredError());
+    return Promise.reject(notWiredError())
   },
   installSteam() {
-    return Promise.reject(notWiredError());
+    return Promise.reject(notWiredError())
   },
   changeSetting() {
-    return Promise.reject(notWiredError());
-  },
-};
+    return Promise.reject(notWiredError())
+  }
+}
 
 /** ⚠ Phase 3b 接上實際函式後即移除此佔位錯誤。 */
 function notWiredError(): Error {
-  return new Error('尚未接上 Heroic（Phase 3b 待對照藍圖 §8 / live repo 接上實際函式）');
+  return new Error(
+    '尚未接上 Heroic（Phase 3b 待對照藍圖 §8 / live repo 接上實際函式）'
+  )
 }

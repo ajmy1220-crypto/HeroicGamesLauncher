@@ -16,42 +16,42 @@
  * 真實廠商 adapter 屬 Phase 5b（放後端、需金鑰），本輪只給介面 + 安全預設 notWiredProvider。
  */
 
-import type { RecommendedAction } from './types';
+import type { RecommendedAction } from './types'
 
 // ── 契約型別 ──────────────────────────────────────────────────────
 
 /** 一次 LLM 請求（provider 無關，由 aiAdvisor 組好）。 */
 export interface AiRequest {
   /** system prompt：角色、規則、輸出格式說明。 */
-  system: string;
+  system: string
   /** 使用者訊息：已組好的 evidence + 提問。 */
-  user: string;
+  user: string
   /**
    * 可選：要求結構化輸出時的 JSON schema（描述 explanation + actions）。
    * adapter 各自把它對映到該廠商的結構化輸出機制（見下方指引）。
    */
-  responseSchema?: Record<string, unknown>;
+  responseSchema?: Record<string, unknown>
   /** 輸出 token 上限；未給時由 adapter 用預設。 */
-  maxTokens?: number;
+  maxTokens?: number
 }
 
 /** 一次 LLM 回應。 */
 export interface AiResponse {
   /** 人話解釋（必有）。 */
-  text: string;
+  text: string
   /**
    * 可選：結構化動作建議（原始，未經確認）。
    * aiAdvisor 會強制把每條的 autoApplyable 設 false（§12.9 絕不靜默套用）。
    */
-  suggestedActions?: RecommendedAction[];
+  suggestedActions?: RecommendedAction[]
 }
 
 /** 廠商無關的 LLM provider 契約。 */
 export interface AiProvider {
   /** 廠商名，如 'anthropic' | 'gemini' | 'ollama'。 */
-  readonly name: string;
+  readonly name: string
   /** 送一次請求，回人話 +（可選）結構化建議。 */
-  complete(req: AiRequest): Promise<AiResponse>;
+  complete(req: AiRequest): Promise<AiResponse>
 }
 
 // ── 安全預設：未設定 provider 即大聲失敗 ──────────────────────────
@@ -64,10 +64,12 @@ export const notWiredProvider: AiProvider = {
   name: 'not-wired',
   complete() {
     return Promise.reject(
-      new Error('尚未設定 AI provider（Phase 5b 待接 Anthropic / Gemini / 本地 adapter）'),
-    );
-  },
-};
+      new Error(
+        '尚未設定 AI provider（Phase 5b 待接 Anthropic / Gemini / 本地 adapter）'
+      )
+    )
+  }
+}
 
 // ── 各廠商 adapter 實作指引（Phase 5b）────────────────────────────
 //

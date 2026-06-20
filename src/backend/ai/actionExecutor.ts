@@ -21,8 +21,13 @@
  * 型別就近放此檔：只有橋接層消費，不污染 types.ts（types.ts 維持純型別真相源）。
  */
 
-import type { HeroicBridge } from './heroicBridge';
-import type { Backend, GameContext, Recommendation, RecommendedAction } from './types';
+import type { HeroicBridge } from './heroicBridge'
+import type {
+  Backend,
+  GameContext,
+  Recommendation,
+  RecommendedAction
+} from './types'
 
 // ── 橋接層專用型別（僅此層消費）──────────────────────────────────
 
@@ -33,7 +38,7 @@ export type BridgeOperation =
   | 'installDxvk'
   | 'reinstallWineVariant'
   | 'installSteam'
-  | 'changeSetting';
+  | 'changeSetting'
 
 /**
  * 一次「打算對 bridge 做什麼」的純資料描述。planAction 的產物，dry-run 直接回給 UI。
@@ -46,11 +51,11 @@ export type BridgeOperation =
  *   - description：人話「打算呼叫什麼」，供 dry-run 審查顯示。
  */
 export interface PlannedCall {
-  operation: BridgeOperation;
-  args: Record<string, unknown>;
-  reversible: boolean;
-  requiresConfirmation: boolean;
-  description: string;
+  operation: BridgeOperation
+  args: Record<string, unknown>
+  reversible: boolean
+  requiresConfirmation: boolean
+  description: string
 }
 
 /** executeAction 的終態。每個值對應一個明確的「為何停在這裡」。 */
@@ -61,21 +66,21 @@ export type ExecutionStatus =
   | 'blocked_needs_confirmation' // 須確認但未帶 confirmed
   | 'blocked_steam_lock' // §11：不得對 Steam 客戶端 prefix 換後端
   | 'invalid_params' // params 缺必要鍵（執行期防線）
-  | 'failed'; // bridge throw
+  | 'failed' // bridge throw
 
 /** executeAction 的回報物件。永遠帶回原 action 與（若有）plan，便於 UI 與 log。 */
 export interface ExecutionResult {
-  action: RecommendedAction;
-  plan: PlannedCall | null;
-  status: ExecutionStatus;
-  detail: string;
+  action: RecommendedAction
+  plan: PlannedCall | null
+  status: ExecutionStatus
+  detail: string
 }
 
 export interface ExecuteOptions {
   /** true → 只規劃不執行，完全不碰 bridge。 */
-  dryRun?: boolean;
+  dryRun?: boolean
   /** true → 使用者已確認（通過確認閘）。預設 false：須確認的動作一律先擋。 */
-  confirmed?: boolean;
+  confirmed?: boolean
 }
 
 // ── 純函式：規劃（planAction / planAll）──────────────────────────
@@ -91,15 +96,18 @@ export interface ExecuteOptions {
  * 回報 'invalid_params'。planAction 只負責「形狀對應」，故對 dry-run 預覽永遠能產出
  * 一份（可能 args 不全的）計畫供審查；唯 kind:'none' 回 null（提示/占位，不可執行）。
  */
-export function planAction(action: RecommendedAction, context: GameContext): PlannedCall | null {
-  const game = gameRefOf(context);
+export function planAction(
+  action: RecommendedAction,
+  context: GameContext
+): PlannedCall | null {
+  const game = gameRefOf(context)
   // 確認閘策略（§6.4 不可逆/改系統須確認、§12.9 絕不靜默套用）：
   // 只有白名單動作（install_winetricks，低風險）可在 autoApplyable=true 時免確認；
   // 其餘動作即使被上游（可能是 LLM / IPC，皆不可信）標成 autoApplyable=true，
   // executor 作為【最後安全閘門】仍一律要求確認——不把「可否靜默套用」的判斷外包
   // 給上游旗標。一個被誤標 / 幻覺標成 autoApplyable=true 的 install_steam 不該靜默執行。
   const requiresConfirmation =
-    action.kind === 'install_winetricks' ? action.autoApplyable !== true : true;
+    action.kind === 'install_winetricks' ? action.autoApplyable !== true : true
 
   switch (action.kind) {
     case 'install_winetricks':
@@ -108,8 +116,8 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
         args: { verb: action.params.verb, game },
         reversible: false,
         requiresConfirmation,
-        description: `安裝 winetricks「${String(action.params.verb)}」到 ${game.appName}`,
-      };
+        description: `安裝 winetricks「${String(action.params.verb)}」到 ${game.appName}`
+      }
 
     case 'switch_backend':
       return {
@@ -117,8 +125,8 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
         args: { backend: action.params.backend, game },
         reversible: true,
         requiresConfirmation,
-        description: `將 ${game.appName} 的後端切換為 ${String(action.params.backend)}`,
-      };
+        description: `將 ${game.appName} 的後端切換為 ${String(action.params.backend)}`
+      }
 
     case 'install_dxvk':
       return {
@@ -126,8 +134,8 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
         args: { game },
         reversible: false,
         requiresConfirmation,
-        description: `安裝 DXVK 到 ${game.appName}`,
-      };
+        description: `安裝 DXVK 到 ${game.appName}`
+      }
 
     case 'reinstall_wine_variant':
       return {
@@ -135,8 +143,8 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
         args: { variant: action.params.variant, game },
         reversible: false,
         requiresConfirmation,
-        description: `重裝 wine 變體「${String(action.params.variant)}」到 ${game.appName}`,
-      };
+        description: `重裝 wine 變體「${String(action.params.variant)}」到 ${game.appName}`
+      }
 
     case 'install_steam':
       // installSteam 不綁單一遊戲（建立新 sideload Steam），args 只帶後端。
@@ -145,8 +153,8 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
         args: { backend: action.params.backend },
         reversible: false,
         requiresConfirmation,
-        description: `以 ${String(action.params.backend)} 後端安裝第二套 Steam`,
-      };
+        description: `以 ${String(action.params.backend)} 後端安裝第二套 Steam`
+      }
 
     case 'change_setting':
       return {
@@ -154,16 +162,16 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
         args: { key: action.params.key, value: action.params.value, game },
         reversible: true,
         requiresConfirmation,
-        description: `將 ${game.appName} 的設定「${String(action.params.key)}」改為 ${String(action.params.value)}`,
-      };
+        description: `將 ${game.appName} 的設定「${String(action.params.key)}」改為 ${String(action.params.value)}`
+      }
 
     case 'none':
       // 提示 / 占位（如 Steam 鎖提示、crossover 提示、AI 占位）——無可執行操作。
-      return null;
+      return null
 
     default:
       // 型別上 kind 已窮盡；保留防呆以免將來新增 kind 時悄悄漏接。
-      return null;
+      return null
   }
 }
 
@@ -171,13 +179,16 @@ export function planAction(action: RecommendedAction, context: GameContext): Pla
  * 把整份 Recommendation 的 actions 規劃成 PlannedCall[]（過濾掉 null，供 UI dry-run 預覽）。
  * 純函式：不改 rec / context，不碰 bridge。
  */
-export function planAll(rec: Recommendation, context: GameContext): PlannedCall[] {
-  const plans: PlannedCall[] = [];
+export function planAll(
+  rec: Recommendation,
+  context: GameContext
+): PlannedCall[] {
+  const plans: PlannedCall[] = []
   for (const action of rec.actions) {
-    const plan = planAction(action, context);
-    if (plan !== null) plans.push(plan);
+    const plan = planAction(action, context)
+    if (plan !== null) plans.push(plan)
   }
-  return plans;
+  return plans
 }
 
 // ── 執行（唯一帶副作用之處，且仍把副作用全部收進注入的 bridge）─────
@@ -199,9 +210,9 @@ export async function executeAction(
   action: RecommendedAction,
   context: GameContext,
   bridge: HeroicBridge,
-  opts: ExecuteOptions = {},
+  opts: ExecuteOptions = {}
 ): Promise<ExecutionResult> {
-  const plan = planAction(action, context);
+  const plan = planAction(action, context)
 
   // 1｜不可執行（提示 / 占位）。
   if (plan === null) {
@@ -209,19 +220,19 @@ export async function executeAction(
       action,
       plan: null,
       status: 'skipped_not_executable',
-      detail: '此動作為提示 / 占位（kind:none），無可執行的 Heroic 操作',
-    };
+      detail: '此動作為提示 / 占位（kind:none），無可執行的 Heroic 操作'
+    }
   }
 
   // 2｜參數驗證（執行期防線：params 是 Record<string,unknown>，可能缺鍵）。
-  const missing = missingArgKeys(plan);
+  const missing = missingArgKeys(plan)
   if (missing.length > 0) {
     return {
       action,
       plan,
       status: 'invalid_params',
-      detail: `缺少必要參數：${missing.join('、')}`,
-    };
+      detail: `缺少必要參數：${missing.join('、')}`
+    }
   }
 
   // 3｜Steam 鎖（§11 / §6.8）：Windows Steam 客戶端鎖在單一 Wine-Staging+DXMT
@@ -236,8 +247,8 @@ export async function executeAction(
       plan,
       status: 'blocked_steam_lock',
       detail:
-        '此 app 為 Windows Steam 客戶端，其 prefix 的 wine 版本 / 後端已鎖定（更動會弄壞 Steam，§11）；改為另裝對應後端的第二套 Steam',
-    };
+        '此 app 為 Windows Steam 客戶端，其 prefix 的 wine 版本 / 後端已鎖定（更動會弄壞 Steam，§11）；改為另裝對應後端的第二套 Steam'
+    }
   }
 
   // 4｜確認閘（§6.4 / §12.9）：須確認但未確認 → 擋下，絕不靜默套用。
@@ -246,8 +257,8 @@ export async function executeAction(
       action,
       plan,
       status: 'blocked_needs_confirmation',
-      detail: '此動作不可逆 / 會改系統，須使用者確認後才能套用',
-    };
+      detail: '此動作不可逆 / 會改系統，須使用者確認後才能套用'
+    }
   }
 
   // 5｜dry-run：只規劃，完全不碰 bridge。
@@ -256,34 +267,37 @@ export async function executeAction(
       action,
       plan,
       status: 'planned',
-      detail: `（dry-run）打算呼叫 ${plan.operation}：${plan.description}`,
-    };
+      detail: `（dry-run）打算呼叫 ${plan.operation}：${plan.description}`
+    }
   }
 
   // 6｜live：呼叫 bridge。bridge throw 不外拋，收成 'failed'。
   try {
-    await callBridge(bridge, plan);
+    await callBridge(bridge, plan)
     return {
       action,
       plan,
       status: 'executed',
-      detail: `已執行 ${plan.operation}：${plan.description}`,
-    };
+      detail: `已執行 ${plan.operation}：${plan.description}`
+    }
   } catch (err) {
     return {
       action,
       plan,
       status: 'failed',
-      detail: `執行 ${plan.operation} 失敗：${errorMessage(err)}`,
-    };
+      detail: `執行 ${plan.operation} 失敗：${errorMessage(err)}`
+    }
   }
 }
 
 // ── 小工具（皆純函式，無副作用）──────────────────────────────────
 
 /** 從 GameContext 取出 bridge 辨識遊戲所需的最小子集。 */
-function gameRefOf(context: GameContext): { appName: string; runner: GameContext['runner'] } {
-  return { appName: context.appName, runner: context.runner };
+function gameRefOf(context: GameContext): {
+  appName: string
+  runner: GameContext['runner']
+} {
+  return { appName: context.appName, runner: context.runner }
 }
 
 /**
@@ -299,13 +313,13 @@ function mutatesSteamPrefix(plan: PlannedCall): boolean {
     case 'switchBackend':
     case 'reinstallWineVariant':
     case 'installDxvk':
-      return true;
+      return true
     case 'changeSetting': {
-      const key = String(plan.args.key ?? '').toLowerCase();
-      return /wine|backend|dxvk|dxmt|gptk|d3dmetal|crossover|prefix/.test(key);
+      const key = String(plan.args.key ?? '').toLowerCase()
+      return /wine|backend|dxvk|dxmt|gptk|d3dmetal|crossover|prefix/.test(key)
     }
     default:
-      return false;
+      return false
   }
 }
 
@@ -319,8 +333,8 @@ const REQUIRED_ARGS: Record<BridgeOperation, readonly string[]> = {
   installDxvk: [], // 只需 game，無 params 依賴。
   reinstallWineVariant: ['variant'],
   installSteam: ['backend'],
-  changeSetting: ['key'], // value 允許 undefined / null（清空設定也是合法寫入）。
-};
+  changeSetting: ['key'] // value 允許 undefined / null（清空設定也是合法寫入）。
+}
 
 /**
  * 回傳 plan.args 中缺少的必要鍵清單；齊全則回空陣列。
@@ -330,7 +344,7 @@ const REQUIRED_ARGS: Record<BridgeOperation, readonly string[]> = {
  * （change_setting 的 value 不在 REQUIRED_ARGS 內，故 value:null「清空設定」仍合法。）
  */
 function missingArgKeys(plan: PlannedCall): string[] {
-  return REQUIRED_ARGS[plan.operation].filter((key) => plan.args[key] == null);
+  return REQUIRED_ARGS[plan.operation].filter((key) => plan.args[key] == null)
 }
 
 /**
@@ -338,30 +352,36 @@ function missingArgKeys(plan: PlannedCall): string[] {
  * 集中此處的型別斷言（args 來源是 Record<string,unknown>），呼叫端已過參數驗證閘。
  */
 function callBridge(bridge: HeroicBridge, plan: PlannedCall): Promise<void> {
-  const a = plan.args;
-  const game = a.game as { appName: string; runner: GameContext['runner'] };
+  const a = plan.args
+  const game = a.game as { appName: string; runner: GameContext['runner'] }
 
   switch (plan.operation) {
     case 'installWinetricks':
-      return bridge.installWinetricks({ verb: a.verb as string, game });
+      return bridge.installWinetricks({ verb: a.verb as string, game })
     case 'switchBackend':
-      return bridge.switchBackend({ backend: a.backend as Backend, game });
+      return bridge.switchBackend({ backend: a.backend as Backend, game })
     case 'installDxvk':
-      return bridge.installDxvk({ game });
+      return bridge.installDxvk({ game })
     case 'reinstallWineVariant':
-      return bridge.reinstallWineVariant({ variant: a.variant as string, game });
+      return bridge.reinstallWineVariant({ variant: a.variant as string, game })
     case 'installSteam':
-      return bridge.installSteam({ backend: a.backend as Backend });
+      return bridge.installSteam({ backend: a.backend as Backend })
     case 'changeSetting':
-      return bridge.changeSetting({ key: a.key as string, value: a.value, game });
+      return bridge.changeSetting({
+        key: a.key as string,
+        value: a.value,
+        game
+      })
     default:
       // 型別上 operation 已窮盡；理論上不可達。
-      return Promise.reject(new Error(`未知的 bridge 操作：${String(plan.operation)}`));
+      return Promise.reject(
+        new Error(`未知的 bridge 操作：${String(plan.operation)}`)
+      )
   }
 }
 
 /** 把 unknown 錯誤安全轉成人話訊息（catch 出來的可能不是 Error）。 */
 function errorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  return String(err);
+  if (err instanceof Error) return err.message
+  return String(err)
 }

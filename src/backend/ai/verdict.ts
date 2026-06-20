@@ -19,7 +19,7 @@
  * 抽取以「行為零變更、12 測試全綠」為硬驗收。
  */
 
-import type { Verdict } from './types';
+import type { Verdict } from './types'
 
 /** verdict 嚴重度序：數字越小越嚴重。 */
 export const VERDICT_ORDER: Record<Verdict, number> = {
@@ -27,14 +27,14 @@ export const VERDICT_ORDER: Record<Verdict, number> = {
   needs_backend_change: 1,
   recoverable: 2,
   unknown: 3,
-  launched_ok: 4,
-};
+  launched_ok: 4
+}
 
 /**
  * 取「比較嚴重」的 verdict（數字小者）。
  * b 未提供時回傳 a，行為與 logAnalyzer 既有 mergeVerdict 完全一致。
  */
 export function mergeVerdict(a: Verdict, b?: Verdict): Verdict {
-  if (!b) return a;
-  return VERDICT_ORDER[b] < VERDICT_ORDER[a] ? b : a;
+  if (!b) return a
+  return VERDICT_ORDER[b] < VERDICT_ORDER[a] ? b : a
 }

@@ -117,7 +117,7 @@ function wineReleaseTypeForVariant(
 }
 
 /** wine 變體安裝進度回呼的 no-op（adapter 不上報 UI 進度，由上層自管）。 */
-const noopWineProgress = (_status: WineManagerStatus): void => {}
+const noopWineProgress: (status: WineManagerStatus) => void = () => {}
 
 // ── 共享 helper（sideload）─────────────────────────────────────────
 
@@ -145,14 +145,20 @@ class RealHeroicBridge implements HeroicBridge {
    * ⚠ 前置陷阱：該遊戲須有有效 wineVersion + 已初始化 prefix，否則 runWithArgs 靜默早退、
    *   本方法仍 resolve（看似成功實則 no-op）。上層（actionExecutor）應先確保 prefix 已建。
    */
-  async installWinetricks(args: { verb: string; game: GameRef }): Promise<void> {
+  async installWinetricks(args: {
+    verb: string
+    game: GameRef
+  }): Promise<void> {
     await Winetricks.install(args.game.runner, args.game.appName, args.verb)
   }
 
   /**
    * → macOS 無單一 backend 欄位（§0）：= wineVersion(物件) + autoInstallDxvk + DXVK 實體裝/移除。
    */
-  async switchBackend(args: { backend: Backend; game: GameRef }): Promise<void> {
+  async switchBackend(args: {
+    backend: Backend
+    game: GameRef
+  }): Promise<void> {
     const { backend, game } = args
     const cfg = GameConfig.get(game.appName)
 
@@ -192,7 +198,9 @@ class RealHeroicBridge implements HeroicBridge {
         const gs = await cfg.getSettings()
         const ok = await DXVK.installRemove(gs, 'dxvk', 'backup')
         if (!ok) {
-          throw new Error('切換到 dxvk 後端失敗：DXVK.installRemove(backup) 回報失敗')
+          throw new Error(
+            '切換到 dxvk 後端失敗：DXVK.installRemove(backup) 回報失敗'
+          )
         }
         cfg.setSetting('autoInstallDxvk', true)
         break

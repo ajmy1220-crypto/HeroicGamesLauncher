@@ -21,7 +21,7 @@
  *     都屬 Phase 6b(⚠,各自實作同一 CompatStorage 介面)。
  */
 
-import type { Arch, CompatRecord } from './types';
+import type { Arch, CompatRecord } from './types'
 
 // ── 持久層契約 ────────────────────────────────────────────────────
 
@@ -38,9 +38,9 @@ export interface CompatStorage {
    * CompatRecord 元素一律【視為唯讀】——呼叫端不得就地改 record 欄位。本層的純
    * 函式皆遵守此約定;Phase 6b 各後端亦須維持此語意以免跨後端行為漂移。
    */
-  load(): Promise<CompatRecord[]>;
+  load(): Promise<CompatRecord[]>
   /** 以傳入清單整批取代既有內容。 */
-  save(records: CompatRecord[]): Promise<void>;
+  save(records: CompatRecord[]): Promise<void>
 }
 
 /**
@@ -55,16 +55,16 @@ export interface CompatStorage {
  */
 export function inMemoryStorage(seed: CompatRecord[] = []): CompatStorage {
   // 起始即吃 seed 的複本,避免外部後續改動 seed 影響內部。
-  let store: CompatRecord[] = [...seed];
+  let store: CompatRecord[] = [...seed]
   return {
     load(): Promise<CompatRecord[]> {
-      return Promise.resolve([...store]);
+      return Promise.resolve([...store])
     },
     save(records: CompatRecord[]): Promise<void> {
-      store = [...records];
-      return Promise.resolve();
-    },
-  };
+      store = [...records]
+      return Promise.resolve()
+    }
+  }
 }
 
 // ── 查詢輸入 ──────────────────────────────────────────────────────
@@ -76,9 +76,9 @@ export function inMemoryStorage(seed: CompatRecord[] = []): CompatStorage {
  * Phase 6b 若要做「同 OS 加分」排序時使用,預設不影響選擇結果。
  */
 export interface RecipeQuery {
-  appName: string;
-  arch: Arch;
-  osVersion?: string;
+  appName: string
+  arch: Arch
+  osVersion?: string
 }
 
 // ── 純函式:選最佳配方 ────────────────────────────────────────────
@@ -86,17 +86,21 @@ export interface RecipeQuery {
 /** result 偏好序:works 最優,works_with_issues 次之。broken / 未知值不在此。 */
 const RESULT_RANK: Record<'works' | 'works_with_issues', number> = {
   works: 0,
-  works_with_issues: 1,
-};
+  works_with_issues: 1
+}
 
 /** 是否為「可作為配方回傳」的 result(正面白名單:排除 broken 與任何未來新增的未知值)。 */
-function isUsableResult(result: CompatRecord['result']): result is 'works' | 'works_with_issues' {
-  return result in RESULT_RANK;
+function isUsableResult(
+  result: CompatRecord['result']
+): result is 'works' | 'works_with_issues' {
+  return result in RESULT_RANK
 }
 
 /** result 的排序值;未知值給明確的最低優先後備(沉底),避免將來新增列舉值時靜默錯排。 */
 function resultRank(result: CompatRecord['result']): number {
-  return result in RESULT_RANK ? RESULT_RANK[result as 'works' | 'works_with_issues'] : 2;
+  return result in RESULT_RANK
+    ? RESULT_RANK[result as 'works' | 'works_with_issues']
+    : 2
 }
 
 /**
@@ -109,8 +113,8 @@ function resultRank(result: CompatRecord['result']): number {
  * 冒頂壓過合法配方。
  */
 function updatedAtRank(updatedAt: string): number {
-  const t = Date.parse(updatedAt);
-  return Number.isNaN(t) ? -Infinity : t;
+  const t = Date.parse(updatedAt)
+  return Number.isNaN(t) ? -Infinity : t
 }
 
 /**
@@ -131,34 +135,34 @@ function updatedAtRank(updatedAt: string): number {
  */
 export function selectBestRecipe(
   records: CompatRecord[],
-  query: RecipeQuery,
+  query: RecipeQuery
 ): CompatRecord | null {
-  let best: CompatRecord | null = null;
+  let best: CompatRecord | null = null
   for (const rec of records) {
-    if (rec.appName !== query.appName) continue;
-    if (rec.arch !== query.arch) continue;
-    if (!isUsableResult(rec.result)) continue;
+    if (rec.appName !== query.appName) continue
+    if (rec.arch !== query.arch) continue
+    if (!isUsableResult(rec.result)) continue
     if (best === null || isBetterRecipe(rec, best)) {
-      best = rec;
+      best = rec
     }
   }
-  return best;
+  return best
 }
 
 /** 候選 a 是否比現任 best 更佳(result 序優先,同序比 updatedAt 較新)。 */
 function isBetterRecipe(a: CompatRecord, best: CompatRecord): boolean {
-  const ra = resultRank(a.result);
-  const rb = resultRank(best.result);
-  if (ra !== rb) return ra < rb;
+  const ra = resultRank(a.result)
+  const rb = resultRank(best.result)
+  if (ra !== rb) return ra < rb
   // 同 result:updatedAt 數值較大(較新)者勝;平手保留現任 best(穩定)。
-  return updatedAtRank(a.updatedAt) > updatedAtRank(best.updatedAt);
+  return updatedAtRank(a.updatedAt) > updatedAtRank(best.updatedAt)
 }
 
 // ── 純函式:去重 upsert ───────────────────────────────────────────
 
 /** 去重 key:同遊戲 + 同後端 + 同晶片視為同一「槽」。 */
 function slotKey(rec: CompatRecord): string {
-  return `${rec.appName}|${rec.backend}|${rec.arch}`;
+  return `${rec.appName}|${rec.backend}|${rec.arch}`
 }
 
 /**
@@ -173,18 +177,20 @@ function slotKey(rec: CompatRecord): string {
  */
 export function upsertRecord(
   records: CompatRecord[],
-  incoming: CompatRecord,
+  incoming: CompatRecord
 ): CompatRecord[] {
-  const key = slotKey(incoming);
-  let replaced = false;
+  const key = slotKey(incoming)
+  let replaced = false
   const next = records.map((rec) => {
-    if (slotKey(rec) !== key) return rec;
-    replaced = true;
+    if (slotKey(rec) !== key) return rec
+    replaced = true
     // incoming 較新或同時間 → 後寫者勝;較舊 → 保留既有。
-    return updatedAtRank(incoming.updatedAt) >= updatedAtRank(rec.updatedAt) ? incoming : rec;
-  });
-  if (!replaced) next.push(incoming);
-  return next;
+    return updatedAtRank(incoming.updatedAt) >= updatedAtRank(rec.updatedAt)
+      ? incoming
+      : rec
+  })
+  if (!replaced) next.push(incoming)
+  return next
 }
 
 // ── 組裝:注入持久層的知識層門面 ──────────────────────────────────
@@ -197,23 +203,23 @@ export function upsertRecord(
  * - listForApp:load → filter appName,回複本(不外漏 storage 內部參照)。
  */
 export function createCompatStore(storage: CompatStorage): {
-  findRecipe(query: RecipeQuery): Promise<CompatRecord | null>;
-  saveRecord(record: CompatRecord): Promise<void>;
-  listForApp(appName: string): Promise<CompatRecord[]>;
+  findRecipe(query: RecipeQuery): Promise<CompatRecord | null>
+  saveRecord(record: CompatRecord): Promise<void>
+  listForApp(appName: string): Promise<CompatRecord[]>
 } {
   return {
     async findRecipe(query: RecipeQuery): Promise<CompatRecord | null> {
-      const records = await storage.load();
-      return selectBestRecipe(records, query);
+      const records = await storage.load()
+      return selectBestRecipe(records, query)
     },
     async saveRecord(record: CompatRecord): Promise<void> {
-      const records = await storage.load();
-      await storage.save(upsertRecord(records, record));
+      const records = await storage.load()
+      await storage.save(upsertRecord(records, record))
     },
     async listForApp(appName: string): Promise<CompatRecord[]> {
-      const records = await storage.load();
+      const records = await storage.load()
       // load() 已回複本,filter 又產新陣列,故回傳不外漏內部參照。
-      return records.filter((rec) => rec.appName === appName);
-    },
-  };
+      return records.filter((rec) => rec.appName === appName)
+    }
+  }
 }

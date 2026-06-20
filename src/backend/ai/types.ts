@@ -21,99 +21,99 @@
 // ── 可重用的字面聯集別名（消除散落的字面字串聯集）────────────────
 
 /** 晶片架構。DXMT / GPTK 僅 arm64；Intel Mac 為 x86_64。 */
-export type Arch = 'arm64' | 'x86_64';
+export type Arch = 'arm64' | 'x86_64'
 
 /** Heroic 的 runner 種類（對齊 §7 與 AiAssistantPanel.tsx）。 */
-export type Runner = 'legendary' | 'gog' | 'nile' | 'sideload';
+export type Runner = 'legendary' | 'gog' | 'nile' | 'sideload'
 
 /** DirectX 主版本（決策三軸之一）。 */
-export type DirectXVersion = 9 | 10 | 11 | 12;
+export type DirectXVersion = 9 | 10 | 11 | 12
 
 // ── 列舉與基礎型別（自 logAnalyzer.ts 搬入，形狀零變更）──────────
 
-export type Severity = 'fatal' | 'error' | 'warning' | 'info';
+export type Severity = 'fatal' | 'error' | 'warning' | 'info'
 
-export type Layer = 'wine' | 'dxvk' | 'dxmt' | 'gptk' | 'game' | 'unknown';
+export type Layer = 'wine' | 'dxvk' | 'dxmt' | 'gptk' | 'game' | 'unknown'
 
-export type Backend = 'wined3d' | 'dxvk' | 'dxmt' | 'gptk' | 'crossover';
+export type Backend = 'wined3d' | 'dxvk' | 'dxmt' | 'gptk' | 'crossover'
 
 export type SignalCategory =
-  | 'missing_dependency'   // 缺 DLL / 執行庫 → 裝 winetricks
-  | 'device_init_failure'  // 後端建立 D3D 裝置失敗 → 多半要換後端
-  | 'unsupported_feature'  // 後端做不到的功能（Stream-Output 等）
-  | 'shader_failure'       // airconv / shader 編譯或不支援
-  | 'os_mismatch'          // macOS 版本不符（DXMT 在 Sonoma 等）
-  | 'anticheat'            // 反作弊 → 通常無解
-  | 'launcher_crash'       // Epic Online Services 等啟動器崩潰
-  | 'fatal_crash'          // page fault / unhandled exception
-  | 'performance';         // 非失敗，但可調（PSO 快取、MetalFX、鎖幀）
+  | 'missing_dependency' // 缺 DLL / 執行庫 → 裝 winetricks
+  | 'device_init_failure' // 後端建立 D3D 裝置失敗 → 多半要換後端
+  | 'unsupported_feature' // 後端做不到的功能（Stream-Output 等）
+  | 'shader_failure' // airconv / shader 編譯或不支援
+  | 'os_mismatch' // macOS 版本不符（DXMT 在 Sonoma 等）
+  | 'anticheat' // 反作弊 → 通常無解
+  | 'launcher_crash' // Epic Online Services 等啟動器崩潰
+  | 'fatal_crash' // page fault / unhandled exception
+  | 'performance' // 非失敗，但可調（PSO 快取、MetalFX、鎖幀）
 
 export type Verdict =
   | 'launched_ok'
-  | 'recoverable'          // 有明確的可自動套用修正（裝 winetricks 等）
+  | 'recoverable' // 有明確的可自動套用修正（裝 winetricks 等）
   | 'needs_backend_change' // 目前後端不行，建議換
-  | 'incompatible'         // 別再試了（反作弊、硬不支援）
-  | 'unknown';             // 規則沒抓到，丟給 AI 層去看 evidence
+  | 'incompatible' // 別再試了（反作弊、硬不支援）
+  | 'unknown' // 規則沒抓到，丟給 AI 層去看 evidence
 
 // ── 回傳給決策層的結構化物件（自 logAnalyzer.ts 搬入）─────────────
 
 export interface DetectedSignal {
   /** 穩定 id，方便去重與測試，例如 'missing_dll'、'anticheat'。 */
-  id: string;
-  category: SignalCategory;
-  severity: Severity;
-  layer: Layer;
+  id: string
+  category: SignalCategory
+  severity: Severity
+  layer: Layer
   /** 給人看的一句話描述。 */
-  message: string;
+  message: string
   /** 命中的原始 log 行（已截斷上限），供透明化與 AI prompt 使用。 */
-  evidence: string[];
+  evidence: string[]
   /** 從 pattern 抓到的欄位，例如 { dll: 'd3dcompiler_47' }。 */
-  detail?: Record<string, string>;
+  detail?: Record<string, string>
   /** 0..1，pattern 命中的把握程度。 */
-  confidence: number;
+  confidence: number
 }
 
 export interface AnalysisSummary {
-  verdict: Verdict;
+  verdict: Verdict
   /** 最值得決策層先處理的訊號。 */
-  topSignal?: DetectedSignal;
+  topSignal?: DetectedSignal
   /** 已預抽好的「桿」，決策層可直接拿去呼叫 Heroic 既有函式。 */
-  suggestedWinetricks: string[];
-  suggestedBackend?: Backend;
+  suggestedWinetricks: string[]
+  suggestedBackend?: Backend
   /** true 代表同一組設定不必重試（硬不相容）。 */
-  blocking: boolean;
+  blocking: boolean
 }
 
 export interface LogAnalysis {
   /** 解析了哪些來源（依命中的 layer 推得）。 */
-  sources: Layer[];
-  signals: DetectedSignal[];
-  summary: AnalysisSummary;
+  sources: Layer[]
+  signals: DetectedSignal[]
+  summary: AnalysisSummary
 }
 
 /** 呼叫端可帶入的環境脈絡，用來判斷 os_mismatch 等需要外部資訊的訊號。 */
 export interface AnalyzerContext {
   /** macOS 版本字串，例如 '14.5'（Sonoma）、'15.1'（Sequoia）。 */
-  osVersion?: string;
+  osVersion?: string
   /** 目前使用的後端，用來推「DX12 跑在 DXMT 上」這類組合錯誤。 */
-  currentBackend?: Backend;
+  currentBackend?: Backend
   /** 每個訊號最多保留幾行 evidence，避免之後塞爆 AI prompt。 */
-  maxEvidencePerSignal?: number;
+  maxEvidencePerSignal?: number
 }
 
 // ── 決策層輸入：遊戲執行脈絡（藍圖 §7）────────────────────────────
 
 export interface GameContext {
-  appName: string;
-  runner: Runner;
-  currentBackend: Backend;
-  wineVersion: string;
+  appName: string
+  runner: Runner
+  currentBackend: Backend
+  wineVersion: string
   /** macOS 版本，例 '15.1'。 */
-  osVersion: string;
-  arch: Arch;
+  osVersion: string
+  arch: Arch
   /** 可能未知（log 沒明說、上層也沒填）。 */
-  directxVersion?: DirectXVersion;
-  is32bit?: boolean;
+  directxVersion?: DirectXVersion
+  is32bit?: boolean
   /**
    * [SEED][相對 §7 刻意新增] 此 sideload app 是否為「Windows Steam 客戶端」。
    *
@@ -124,7 +124,7 @@ export interface GameContext {
    * 真值來源：由上層（讀 Heroic sideload app 設定）注入，待對照 Heroic
    * live repo 的 sideload 結構核對。undefined / false 時退化為一般 sideload。
    */
-  isWindowsSteamClient?: boolean;
+  isWindowsSteamClient?: boolean
 }
 
 // ── 決策層產出（藍圖 §7）──────────────────────────────────────────
@@ -147,37 +147,37 @@ export interface RecommendedAction {
     | 'reinstall_wine_variant'
     | 'install_steam'
     | 'change_setting'
-    | 'none';
-  params: Record<string, unknown>;
+    | 'none'
+  params: Record<string, unknown>
   /** 人話，顯示在 UI。 */
-  reason: string;
+  reason: string
   /** 是否可不問就套用（預設保守；僅 install_winetricks 預設 true）。 */
-  autoApplyable: boolean;
+  autoApplyable: boolean
   /** 0..1。 */
-  confidence: number;
+  confidence: number
 }
 
 export interface Recommendation {
-  verdict: Verdict;
-  actions: RecommendedAction[];
+  verdict: Verdict
+  actions: RecommendedAction[]
   /** true → 交 aiAdvisor 解釋 / 補判。 */
-  needsAi: boolean;
+  needsAi: boolean
   /** true → 同組設定不必重試（硬不相容）。 */
-  blocking: boolean;
+  blocking: boolean
 }
 
 // ── 知識層紀錄（藍圖 §7；Phase 2 不用，集中以免 Phase 6 再動本檔）──
 
 export interface CompatRecord {
-  appName: string;
-  backend: Backend;
-  wineVersion: string;
-  winetricks: string[];
-  env: Record<string, string>;
-  osVersion: string;
-  arch: Arch;
-  result: 'works' | 'works_with_issues' | 'broken';
-  notes?: string;
+  appName: string
+  backend: Backend
+  wineVersion: string
+  winetricks: string[]
+  env: Record<string, string>
+  osVersion: string
+  arch: Arch
+  result: 'works' | 'works_with_issues' | 'broken'
+  notes?: string
   /** ISO 時間字串。 */
-  updatedAt: string;
+  updatedAt: string
 }
