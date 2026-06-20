@@ -50,6 +50,11 @@ import type { GOGCloudSavesLocation, UserData } from './gog'
 import type { NileLoginData, NileRegisterData, NileUserData } from './nile'
 import type { GameOverride, SelectiveDownload } from './legendary'
 import type { GetLogFileArgs } from 'backend/logger/paths'
+// Helmsman（Phase 3b）：AI 編排層型別。皆 `import type`，isolatedModules 下完全 erase，
+// 不帶 runtime 依賴、不把 realHeroicBridge 拉進 common。
+import type { GameContext, RecommendedAction } from 'backend/ai/types'
+import type { ExecutionResult } from 'backend/ai/actionExecutor'
+import type { DiagnoseResult, HelmsmanError } from 'backend/ai/orchestrator'
 
 // ts-prune-ignore-next
 interface SyncIPCFunctions {
@@ -149,6 +154,16 @@ interface TestSyncIPCFunctions {
 
 // ts-prune-ignore-next
 interface AsyncIPCFunctions {
+  // Helmsman（Phase 3b 注入接線）。helmsmanApplyAction 刻意【不】帶 confirmed 參數：
+  // 「使用者已確認」不由 renderer 自證（§12.9）；確認回路待 Phase 4。
+  helmsmanDiagnose: (args: {
+    log: string
+    context: GameContext
+  }) => DiagnoseResult | HelmsmanError
+  helmsmanApplyAction: (args: {
+    action: RecommendedAction
+    context: GameContext
+  }) => Promise<ExecutionResult | HelmsmanError>
   kill: (appName: string, runner: Runner) => Promise<void>
   checkDiskSpace: (folder: string) => Promise<DiskSpaceData>
   callTool: (args: Tools) => Promise<void>
