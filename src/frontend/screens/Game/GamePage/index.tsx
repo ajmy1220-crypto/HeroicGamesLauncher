@@ -7,7 +7,8 @@ import {
   Info,
   Star,
   Monitor,
-  EmojiEvents
+  EmojiEvents,
+  AutoFixHigh
 } from '@mui/icons-material'
 
 import { Tab, Tabs } from '@mui/material'
@@ -68,6 +69,7 @@ import { hasAnticheatInfo } from 'frontend/hooks/hasAnticheatInfo'
 import { hasHelp } from 'frontend/hooks/hasHelp'
 import Genres from './components/Genres'
 import ReleaseDate from './components/ReleaseDate'
+import AiAssistantPanel from './components/AiAssistantPanel'
 import { hasKnownFixes } from 'frontend/hooks/hasKnownFixes'
 import { openInstallGameModal } from 'frontend/state/InstallGameModal'
 import useSettingsContext from 'frontend/hooks/useSettingsContext'
@@ -173,7 +175,7 @@ export default React.memo(function GamePage(): JSX.Element | null {
   const storage: Storage = window.localStorage
 
   const [currentTab, setCurrentTab] = useState<
-    'info' | 'achievements' | 'extra' | 'requirements'
+    'info' | 'achievements' | 'extra' | 'requirements' | 'ai'
   >('info')
 
   const previousIsPlaying = useRef<boolean>(isPlaying)
@@ -527,6 +529,13 @@ export default React.memo(function GamePage(): JSX.Element | null {
                               icon={<Monitor className="gameInfoTabsIcon" />}
                             />
                           )}
+                          <Tab
+                            className="tabButton"
+                            value={'ai'}
+                            label={t('game.ai.tab', 'AI Diagnostics')}
+                            iconPosition="start"
+                            icon={<AutoFixHigh className="gameInfoTabsIcon" />}
+                          />
                         </Tabs>
                       </div>
 
@@ -565,6 +574,14 @@ export default React.memo(function GamePage(): JSX.Element | null {
                           index="requirements"
                         >
                           <Requirements />
+                        </TabPanel>
+
+                        <TabPanel
+                          value={currentTab}
+                          index="ai"
+                          className="aiTab"
+                        >
+                          <AiAssistantPanel appName={appName} runner={runner} />
                         </TabPanel>
                       </div>
                     </div>

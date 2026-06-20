@@ -121,6 +121,62 @@
     "enabled": "Enabled",
     "game": {
         "achievements": "Achievements",
+        "ai": {
+            "act": {
+                "dxvk": "Install / update DXVK",
+                "setting": "Adjust setting {{name}}",
+                "steam": "Install a second Steam",
+                "switch": "Switch backend to {{backend}}",
+                "wine": "Reinstall Wine variant",
+                "winetricks": "Install {{verb}}"
+            },
+            "advise": {
+                "again": "Ask again",
+                "asking": "Asking AI…",
+                "btn": "Ask AI",
+                "disclaimer": "AI suggestions — review before applying.",
+                "examples": {
+                    "blackscreen": "Black screen — no game window",
+                    "cjk": "Chinese / Japanese / Korean text shows as boxes",
+                    "crash": "Crashes right after launch"
+                },
+                "examplesLabel": "Common problems:",
+                "failed": "AI request failed",
+                "placeholder": "Describe the problem in your own words — e.g. \"Chinese text shows as boxes\". Leave blank to let AI judge from the log.",
+                "title": "Ask AI"
+            },
+            "apply": {
+                "applying": "Applying…",
+                "btn": "Apply",
+                "cancelled": "Cancelled.",
+                "executed": "Applied. Restart the game, then run diagnosis again.",
+                "failed": "Apply failed"
+            },
+            "confidence": "confidence",
+            "diagnose": "Diagnose",
+            "diagnosing": "Diagnosing…",
+            "empty": "Game won't start? Run a diagnosis — Helmsman reads the game's log and suggests fixes.",
+            "failed": "Diagnosis failed",
+            "no-issues": "No known issues detected. Diagnosis reads the game log — if it actually fails to launch, run it once so Heroic produces a log, then diagnose again.",
+            "recommendations": "Suggested fixes",
+            "rediagnose": "Re-run diagnosis",
+            "sev": {
+                "error": "Error",
+                "fatal": "Fatal",
+                "info": "Info",
+                "warning": "Warning"
+            },
+            "signals": "Detected issues",
+            "tab": "AI Diagnostics",
+            "title": "AI Diagnostics",
+            "verdict": {
+                "backend": "Needs a different backend",
+                "incompatible": "Can't run",
+                "ok": "Looks fine",
+                "recoverable": "Fixable",
+                "unknown": "Inconclusive"
+            }
+        },
         "branch": {
             "disabled": "Disabled",
             "password": "Set private channel password",
