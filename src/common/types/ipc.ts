@@ -50,9 +50,9 @@ import type { GOGCloudSavesLocation, UserData } from './gog'
 import type { NileLoginData, NileRegisterData, NileUserData } from './nile'
 import type { GameOverride, SelectiveDownload } from './legendary'
 import type { GetLogFileArgs } from 'backend/logger/paths'
-// Helmsman（Phase 3b）：AI 編排層型別。皆 `import type`，isolatedModules 下完全 erase，
-// 不帶 runtime 依賴、不把 realHeroicBridge 拉進 common。
-import type { GameContext, RecommendedAction } from 'backend/ai/types'
+// Helmsman：AI 編排層型別。皆 `import type`，isolatedModules 下完全 erase，
+// 不帶 runtime 依賴、不把 realHeroicBridge / heroicContextProvider 拉進 common。
+import type { RecommendedAction } from 'backend/ai/types'
 import type { ExecutionResult } from 'backend/ai/actionExecutor'
 import type { DiagnoseResult, HelmsmanError } from 'backend/ai/orchestrator'
 
@@ -154,15 +154,17 @@ interface TestSyncIPCFunctions {
 
 // ts-prune-ignore-next
 interface AsyncIPCFunctions {
-  // Helmsman（Phase 3b 注入接線）。helmsmanApplyAction 刻意【不】帶 confirmed 參數：
-  // 「使用者已確認」不由 renderer 自證（§12.9）；確認回路待 Phase 4。
+  // Helmsman（Phase 4：後端權威組 context）。channel 只收定址用的 { appName, runner }，
+  // context 由後端 provider 權威組（renderer 無法謊報 isWindowsSteamClient 繞 §11）。
+  // helmsmanApplyAction 刻意【不】帶 confirmed（確認不由 renderer 自證，§12.9）。
   helmsmanDiagnose: (args: {
-    log: string
-    context: GameContext
-  }) => DiagnoseResult | HelmsmanError
+    appName: string
+    runner: Runner
+  }) => Promise<DiagnoseResult | HelmsmanError>
   helmsmanApplyAction: (args: {
+    appName: string
+    runner: Runner
     action: RecommendedAction
-    context: GameContext
   }) => Promise<ExecutionResult | HelmsmanError>
   kill: (appName: string, runner: Runner) => Promise<void>
   checkDiskSpace: (folder: string) => Promise<DiskSpaceData>

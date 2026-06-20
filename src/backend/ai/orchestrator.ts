@@ -7,20 +7,21 @@
  * 重建被 TypeScript 型別系統抹掉的安全前提（§11 / §12.9）。
  *
  * 分層鐵律：
- *   - 本檔【不】import realHeroicBridge——bridge 一律由呼叫端（ipc_handler）注入。
- *     故本檔與其全部相依（logAnalyzer / recommendationEngine / actionExecutor /
- *     heroicBridge / types）皆 Heroic-free，可在 jest 下零 mock 測試。
- *   - diagnose 為純函式（analyze→recommend→planAll）；runDiagnose / runApply 在進入
- *     純核心前，對不可信輸入做 fail-closed 驗證 / 正規化。
+ *   - 本檔【不】import realHeroicBridge / heroicContextProvider——bridge（寫 adapter）與
+ *     context provider（讀 adapter）一律由呼叫端（ipc_handler）注入。故本檔與其全部相依
+ *     （logAnalyzer / recommendationEngine / actionExecutor / heroicBridge / types）皆
+ *     Heroic-free，可在 jest 下零 mock 測試（fake bridge + fake provider）。
+ *   - diagnose 為純函式（analyze→recommend→planAll）；runDiagnose / runApply 驗不可信的
+ *     { appName, runner, action }，再由注入的 provider 後端權威組 context + 讀 log。
  *
  * 信任邊界（§6.4 安全邊界的 IPC 版，對抗式審查的核心修正）：
  *   - §12.9：runApply 對 executeAction 一律傳 confirmed:false——「使用者已確認」這個
  *     事實【不】由 renderer 自證（renderer 可能是 AI 驅動 / 被攻陷）。本階段只有
  *     executeAction 白名單（autoApplyable 的 install_winetricks）會真執行，其餘一律
  *     回 blocked_needs_confirmation。可信確認回路待 Phase 4 前端。
- *   - §11：normalizeContext 把 isWindowsSteamClient 強制成嚴格 boolean（=== true），
- *     不讓非 boolean 值（'false' / 0 / 1）在下游被誤判為 truthy；executeAction 的
- *     Steam 鎖判定（同樣 === true）為最後防線。
+ *   - §11：context 由注入的 provider 後端權威組（assembleGameContext，非 renderer 自報）
+ *     ——renderer 無法偽造 isWindowsSteamClient 繞 Steam 鎖；executeAction 的 Steam 鎖判定
+ *     （=== true）為最後防線。normalizeContext 保留為純驗證工具，降為防禦性備援、不在主路徑。
  *   - 不可信 log 不再讓 analyze 的 raw.split 同步 throw（coerceLog 先擋非字串 + 設上限）。
  */
 
@@ -54,6 +55,16 @@ export interface DiagnoseResult {
 /** 結構化錯誤回傳（不把內部 error 訊息 / 堆疊原樣洩漏到 renderer）。 */
 export interface HelmsmanError {
   error: string
+}
+
+/**
+ * 後端「讀 adapter」契約：權威地組 GameContext + 讀遊戲 log（與 HeroicBridge 的「寫
+ * adapter」對稱）。由 ipc_handler 注入真實 heroicContextProvider；測試注入 fake。
+ * 本檔【不】import 真實 provider——保持 Heroic-free + jest 零 mock（同 bridge 注入鐵律）。
+ */
+export interface ContextProvider {
+  assembleGameContext(appName: string, runner: Runner): Promise<GameContext>
+  readGameLog(appName: string, runner: Runner): string
 }
 
 // ── 驗證白名單（runtime 重建被型別抹掉的 enum 約束）─────────────────
@@ -110,6 +121,18 @@ function isOneOf<T>(value: unknown, allowed: readonly T[]): value is T {
   return (allowed as readonly unknown[]).includes(value)
 }
 
+/**
+ * 驗不可信 IPC 輸入的「定址欄位」{ appName, runner }，不合法回 null。
+ * runner 以白名單收窄（Heroic 的 Runner 聯集較寬，含 comet/zoom 等；Helmsman 只認四種）。
+ */
+function readGameRef(
+  o: Record<string, unknown>
+): { appName: string; runner: Runner } | null {
+  if (typeof o.appName !== 'string' || o.appName === '') return null
+  if (!isOneOf(o.runner, RUNNERS)) return null
+  return { appName: o.appName, runner: o.runner }
+}
+
 /** 非字串回 null（防 analyze 的 raw.split throw）；超過上限截斷。 */
 export function coerceLog(
   raw: unknown,
@@ -121,6 +144,10 @@ export function coerceLog(
 
 /**
  * 把不可信的 context 正規化成可信任的 GameContext，不合法回 null。
+ *
+ * 【Phase 4 後角色變化】context 改由後端 provider 權威組（assembleGameContext），本函式
+ * 不再在 runDiagnose / runApply 主路徑；保留為純驗證工具（防禦性備援 + 釘樁測試資產）。
+ *
  *   - 必填字串（appName / wineVersion / osVersion）型別檢查。
  *   - enum 欄位（runner / currentBackend / arch）對白名單比對，不合法→null
  *     （否則垃圾值流進規則層會產生看似正常、實則錯誤的建議；§審查 risk #4）。
@@ -199,27 +226,28 @@ function errorMessage(err: unknown): string {
 // ── IPC 邊界進入點（ipc_handler 直接呼叫；對不可信輸入收口）──────────
 
 /**
- * helmsmanDiagnose 的核心：驗證不可信輸入 → diagnose。唯讀、不碰 bridge。
- * analyzerContext 由已驗的 context 衍生（osVersion / currentBackend 皆在 GameContext 內），
- * 不另開一個 IPC 參數的驗證面；maxEvidence 用 analyze 預設（避免 renderer 設爆）。
+ * helmsmanDiagnose 的核心：驗 { appName, runner } → provider 後端權威組 context + 讀 log
+ * → diagnose。唯讀、不碰 bridge。analyzerContext 由 context 衍生（osVersion / currentBackend
+ * 皆在 GameContext 內）；maxEvidence 用 analyze 預設。context 不再由 renderer 傳（後端權威）。
  */
-export function runDiagnose(raw: unknown): DiagnoseResult | HelmsmanError {
+export async function runDiagnose(
+  raw: unknown,
+  provider: ContextProvider
+): Promise<DiagnoseResult | HelmsmanError> {
   try {
     if (typeof raw !== 'object' || raw === null) {
       return { error: 'helmsmanDiagnose：參數必須是物件' }
     }
-    const o = raw as Record<string, unknown>
-
-    const log = coerceLog(o.log)
-    if (log === null) {
-      return { error: 'helmsmanDiagnose：log 必須是字串' }
+    const ref = readGameRef(raw as Record<string, unknown>)
+    if (ref === null) {
+      return { error: 'helmsmanDiagnose：appName / runner 不合法' }
     }
 
-    const context = normalizeContext(o.context)
-    if (context === null) {
-      return {
-        error: 'helmsmanDiagnose：context 不合法（缺欄位或 enum 值不合法）'
-      }
+    // 後端權威組 context + 讀 log（provider 是 Heroic 讀 adapter）。
+    const context = await provider.assembleGameContext(ref.appName, ref.runner)
+    const log = coerceLog(provider.readGameLog(ref.appName, ref.runner))
+    if (log === null) {
+      return { error: 'helmsmanDiagnose：log 讀取失敗（非字串）' }
     }
 
     const analyzerContext: AnalyzerContext = {
@@ -234,25 +262,34 @@ export function runDiagnose(raw: unknown): DiagnoseResult | HelmsmanError {
 }
 
 /**
- * helmsmanApplyAction 的核心：驗證不可信輸入 → executeAction（注入 bridge）。
+ * helmsmanApplyAction 的核心：驗 { appName, runner, action } → provider 組 context →
+ * executeAction（注入 bridge）。
  *
  * §12.9 硬化：對 executeAction 一律傳 confirmed:false——不接受、不轉送任何 renderer
  * 自證的「已確認」旗標。本階段唯一會真執行的是 executeAction 白名單（autoApplyable 的
- * install_winetricks）；其餘須確認的動作一律回 blocked_needs_confirmation，等 Phase 4
- * 提供可信確認回路才點亮。dryRun:false——本 channel 是 live 套用；dry-run 預覽走 diagnose。
+ * install_winetricks）；其餘須確認的動作一律回 blocked_needs_confirmation，等可信確認
+ * 回路（前端）才點亮。dryRun:false——本 channel 是 live 套用；dry-run 預覽走 diagnose。
  *
- * bridge 由參數注入（live 模式由 ipc_handler 傳 realHeroicBridge）；executeAction 已把
- * bridge throw 收口成 status:'failed'，這裡的 try/catch 只收輸入驗證階段的意外。
+ * §11 強化：context 由 provider 後端權威組（非 renderer 傳）——renderer 無法偽造
+ * isWindowsSteamClient:false 繞 Steam 鎖。action 仍從 renderer 來、仍過 normalizeAction。
+ * bridge 由參數注入；executeAction 已把 bridge throw 收口成 status:'failed'，這裡的
+ * try/catch 只收輸入驗證 / context 組裝階段的意外。
  */
 export async function runApply(
   raw: unknown,
-  bridge: HeroicBridge
+  bridge: HeroicBridge,
+  provider: ContextProvider
 ): Promise<ExecutionResult | HelmsmanError> {
   try {
     if (typeof raw !== 'object' || raw === null) {
       return { error: 'helmsmanApplyAction：參數必須是物件' }
     }
     const o = raw as Record<string, unknown>
+
+    const ref = readGameRef(o)
+    if (ref === null) {
+      return { error: 'helmsmanApplyAction：appName / runner 不合法' }
+    }
 
     const action = normalizeAction(o.action)
     if (action === null) {
@@ -262,12 +299,7 @@ export async function runApply(
       }
     }
 
-    const context = normalizeContext(o.context)
-    if (context === null) {
-      return {
-        error: 'helmsmanApplyAction：context 不合法（缺欄位或 enum 值不合法）'
-      }
-    }
+    const context = await provider.assembleGameContext(ref.appName, ref.runner)
 
     return await executeAction(action, context, bridge, {
       confirmed: false,

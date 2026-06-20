@@ -1,14 +1,16 @@
 /**
  * orchestrator.test.ts
  * ------------------------------------------------------------------
- * Helmsman — Phase 3b orchestration 進入點的單元測試 + mutation 釘樁。
+ * Helmsman — orchestration 進入點的單元測試 + mutation 釘樁。
  *
- * 刻意【不】import realHeroicBridge：orchestrator 及其相依全 Heroic-free，
- * 故本檔零 mock（bridge 用結構相容的 fake）。釘樁原則：還原修正即變紅才算數。
+ * 刻意【不】import realHeroicBridge / heroicContextProvider：orchestrator 及其相依全
+ * Heroic-free，故本檔零 mock（bridge + provider 用結構相容的 fake）。
+ * 釘樁原則：還原修正即變紅才算數。
  *
- * 誠實註記：runApply 對 bridge 是純 pass-through，故「realHeroicBridge 真的接對
- * Heroic 函式」在此測不出差異（等價突變）——那屬 realHeroicBridge 自身 + 整合測試
- * 責任。本檔釘的是 orchestrator 的串接、信任邊界硬化（§11 / §12.9）與輸入驗證。
+ * 誠實註記：runApply 對 bridge 純 pass-through、context 來自注入的 provider，故「真實
+ * adapter 接對 Heroic 函式」在此測不出差異（等價突變，屬 realHeroicBridge /
+ * heroicContextProvider 自身 + 整合測試責任）。本檔釘的是 orchestrator 的串接、
+ * 信任邊界硬化（§11 / §12.9）與輸入驗證。
  */
 
 import {
@@ -19,8 +21,8 @@ import {
   runDiagnose
 } from '../orchestrator'
 
+import type { ContextProvider, HelmsmanError } from '../orchestrator'
 import type { ExecutionResult } from '../actionExecutor'
-import type { HelmsmanError } from '../orchestrator'
 import type { GameContext, RecommendedAction } from '../types'
 
 // ── fixtures ──────────────────────────────────────────────────────
@@ -41,7 +43,7 @@ const baseContext: GameContext = {
   arch: 'arm64'
 }
 
-/** 不可信輸入用的原始 context（型別放鬆成可塞非法值）。 */
+/** 不可信輸入用的原始物件（型別放鬆成可塞非法值）。 */
 const rawContext = (
   overrides: Record<string, unknown> = {}
 ): Record<string, unknown> => ({
@@ -52,6 +54,15 @@ const rawContext = (
   osVersion: '15.1',
   arch: 'arm64',
   ...overrides
+})
+
+/** 結構相容的 fake ContextProvider（後端權威組 context + 讀 log 的替身）。 */
+const makeFakeProvider = (
+  context: GameContext = baseContext,
+  log = MISSING_DLL_LOG
+): ContextProvider => ({
+  assembleGameContext: jest.fn(async () => context),
+  readGameLog: jest.fn(() => log)
 })
 
 /** 結構相容的 fake bridge（每方法 jest.fn，可斷言呼叫）。 */
@@ -72,6 +83,8 @@ function asExecution(res: ExecutionResult | HelmsmanError): ExecutionResult {
   return res
 }
 
+const APP = { appName: 'TestGame', runner: 'sideload' }
+
 const switchAction: RecommendedAction = {
   kind: 'switch_backend',
   params: { backend: 'gptk' },
@@ -88,7 +101,7 @@ const winetricksAction: RecommendedAction = {
   confidence: 0.9
 }
 
-// ── diagnose：純串接 analyze→recommend→planAll ────────────────────
+// ── diagnose：純串接 analyze→recommend→planAll（簽章未變）──────────
 
 describe('diagnose（純串接）', () => {
   test('missing-DLL log → 建議 install_winetricks 且 plans 含 installWinetricks', () => {
@@ -112,13 +125,38 @@ describe('diagnose（純串接）', () => {
   })
 })
 
+// ── runDiagnose：provider 後端權威組 context + 讀 log → diagnose ─────
+
+describe('runDiagnose（provider 注入）', () => {
+  test('正常 → 串接 provider 的 log/context 得出建議', async () => {
+    const res = await runDiagnose(APP, makeFakeProvider())
+    expect('error' in res).toBe(false)
+    if ('error' in res) throw new Error(res.error)
+
+    expect(
+      res.recommendation.actions.some((a) => a.kind === 'install_winetricks')
+    ).toBe(true)
+  })
+
+  test('壞 runner → 結構化 error（不呼叫 provider）', async () => {
+    const provider = makeFakeProvider()
+    const res = await runDiagnose({ appName: 'X', runner: 'epic' }, provider)
+    expect('error' in res).toBe(true)
+    expect(provider.assembleGameContext).not.toHaveBeenCalled()
+  })
+})
+
 // ── §12.9 釘樁：confirmed 不由 renderer 自證 ────────────────────────
 
 describe('runApply — §12.9 確認閘硬化', () => {
   test('switch_backend → blocked_needs_confirmation，bridge 未被呼叫', async () => {
     const bridge = makeFakeBridge()
     const res = asExecution(
-      await runApply({ action: switchAction, context: rawContext() }, bridge)
+      await runApply(
+        { ...APP, action: switchAction },
+        bridge,
+        makeFakeProvider()
+      )
     )
 
     // 釘樁核心：把 runApply 的 confirmed:false 改成 true，此處會翻成 executed +
@@ -131,8 +169,9 @@ describe('runApply — §12.9 確認閘硬化', () => {
     const bridge = makeFakeBridge()
     const res = asExecution(
       await runApply(
-        { action: winetricksAction, context: rawContext() },
-        bridge
+        { ...APP, action: winetricksAction },
+        bridge,
+        makeFakeProvider()
       )
     )
 
@@ -143,26 +182,25 @@ describe('runApply — §12.9 確認閘硬化', () => {
   })
 })
 
-// ── §11 釘樁：Steam 鎖 + isWindowsSteamClient 正規化 ────────────────
+// ── §11 釘樁：Steam 鎖（context 現由後端 provider 權威組）─────────────
 
 describe('Steam 鎖（§11）', () => {
-  test('isWindowsSteamClient:true + switch_backend → blocked_steam_lock', async () => {
+  test('provider 回 isWindowsSteamClient:true 的 ctx + switch_backend → blocked_steam_lock', async () => {
     const bridge = makeFakeBridge()
+    const steamProvider = makeFakeProvider({
+      ...baseContext,
+      isWindowsSteamClient: true
+    })
     const res = asExecution(
-      await runApply(
-        {
-          action: switchAction,
-          context: rawContext({ isWindowsSteamClient: true })
-        },
-        bridge
-      )
+      await runApply({ ...APP, action: switchAction }, bridge, steamProvider)
     )
 
+    // 安全屬性：context 後端權威 → renderer 無法偽造 isWindowsSteamClient:false 繞鎖。
     expect(res.status).toBe('blocked_steam_lock')
     expect(bridge.switchBackend).not.toHaveBeenCalled()
   })
 
-  test('normalizeContext 把 isWindowsSteamClient 強制成嚴格 boolean', () => {
+  test('normalizeContext 把 isWindowsSteamClient 強制成嚴格 boolean（純工具，防禦性備援）', () => {
     expect(
       normalizeContext(rawContext({ isWindowsSteamClient: true }))
         ?.isWindowsSteamClient
@@ -203,31 +241,21 @@ describe('輸入驗證', () => {
     expect(normalizeContext(rawContext())).not.toBeNull()
   })
 
-  test('runDiagnose：非字串 log / 壞 context → 結構化 error；正常 → 結果', () => {
-    expect('error' in runDiagnose({ log: 123, context: rawContext() })).toBe(
-      true
-    )
-    expect(
-      'error' in runDiagnose({ log: 'ok', context: rawContext({ arch: 'x' }) })
-    ).toBe(true)
-    expect(
-      'error' in runDiagnose({ log: MISSING_DLL_LOG, context: rawContext() })
-    ).toBe(false)
-  })
-
-  test('runApply：未知 kind / 壞 context → 結構化 error，bridge 未被呼叫', async () => {
+  test('runApply：未知 kind / 壞 runner → 結構化 error，bridge 未被呼叫', async () => {
     const bridge = makeFakeBridge()
     const badKind = await runApply(
-      { action: { kind: 'evil', params: {} }, context: rawContext() },
-      bridge
+      { ...APP, action: { kind: 'evil', params: {} } },
+      bridge,
+      makeFakeProvider()
     )
-    const badCtx = await runApply(
-      { action: switchAction, context: rawContext({ arch: 'x' }) },
-      bridge
+    const badRunner = await runApply(
+      { appName: 'X', runner: 'epic', action: switchAction },
+      bridge,
+      makeFakeProvider()
     )
 
     expect('error' in badKind).toBe(true)
-    expect('error' in badCtx).toBe(true)
+    expect('error' in badRunner).toBe(true)
     expect(bridge.switchBackend).not.toHaveBeenCalled()
   })
 })
