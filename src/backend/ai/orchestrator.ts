@@ -263,22 +263,24 @@ export async function runDiagnose(
 
 /**
  * helmsmanApplyAction 的核心：驗 { appName, runner, action } → provider 組 context →
- * executeAction（注入 bridge）。
+ * executeAction（注入 bridge + confirm）。
  *
- * §12.9 硬化：對 executeAction 一律傳 confirmed:false——不接受、不轉送任何 renderer
- * 自證的「已確認」旗標。本階段唯一會真執行的是 executeAction 白名單（autoApplyable 的
- * install_winetricks）；其餘須確認的動作一律回 blocked_needs_confirmation，等可信確認
- * 回路（前端）才點亮。dryRun:false——本 channel 是 live 套用；dry-run 預覽走 diagnose。
+ * §12.9：對 executeAction 傳 confirmed:false——「使用者已確認」不由 renderer 自證。
+ * 須確認的動作改由注入的 confirm callback（主程序權威，live＝原生 dialog）在 executeAction
+ * 的確認閘取得真實確認；install_winetricks 白名單仍免確認直接執行。confirm 未注入時
+ * （如本檔測試不傳）須確認的動作一律 blocked_needs_confirmation。dryRun:false——本 channel
+ * 是 live 套用；dry-run 預覽走 diagnose。
  *
- * §11 強化：context 由 provider 後端權威組（非 renderer 傳）——renderer 無法偽造
- * isWindowsSteamClient:false 繞 Steam 鎖。action 仍從 renderer 來、仍過 normalizeAction。
- * bridge 由參數注入；executeAction 已把 bridge throw 收口成 status:'failed'，這裡的
- * try/catch 只收輸入驗證 / context 組裝階段的意外。
+ * §11：context 由 provider 後端權威組（非 renderer 傳）——renderer 無法偽造
+ * isWindowsSteamClient 繞 Steam 鎖；Steam 鎖在 confirm 之前，Steam 客戶端不會先彈框再被擋。
+ * action 仍從 renderer 來、仍過 normalizeAction。bridge / confirm 由參數注入；executeAction
+ * 已把 bridge throw 收口成 status:'failed'，try/catch 只收驗證 / context 組裝的意外。
  */
 export async function runApply(
   raw: unknown,
   bridge: HeroicBridge,
-  provider: ContextProvider
+  provider: ContextProvider,
+  confirm?: (plan: PlannedCall, context: GameContext) => Promise<boolean>
 ): Promise<ExecutionResult | HelmsmanError> {
   try {
     if (typeof raw !== 'object' || raw === null) {
@@ -303,7 +305,8 @@ export async function runApply(
 
     return await executeAction(action, context, bridge, {
       confirmed: false,
-      dryRun: false
+      dryRun: false,
+      confirm
     })
   } catch (err) {
     return { error: `helmsmanApplyAction 失敗：${errorMessage(err)}` }

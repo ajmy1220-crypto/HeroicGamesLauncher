@@ -17,14 +17,16 @@ import { addHandler } from '../ipc'
 import { runApply, runDiagnose } from './orchestrator'
 import { realHeroicBridge } from './realHeroicBridge'
 import { heroicContextProvider } from './heroicContextProvider'
+import { helmsmanConfirm } from './heroicConfirm'
 
 // 唯讀診斷：provider 後端權威組 context + 讀 log → analyze→recommend→plans。不碰 bridge。
 addHandler('helmsmanDiagnose', (_e, args) =>
   runDiagnose(args, heroicContextProvider)
 )
 
-// live 套用：注入 realHeroicBridge（寫）+ heroicContextProvider（讀 context）。orchestrator
-// 對 executeAction 一律 confirmed:false（§12.9），本階段僅 install_winetricks 白名單真執行。
+// live 套用：注入 realHeroicBridge（寫）+ heroicContextProvider（讀 context）+ helmsmanConfirm
+// （§12.9 主程序權威原生確認）。renderer 不傳 confirmed；須確認動作由 helmsmanConfirm 取得，
+// install_winetricks 白名單免確認直接執行。
 addHandler('helmsmanApplyAction', (_e, args) =>
-  runApply(args, realHeroicBridge, heroicContextProvider)
+  runApply(args, realHeroicBridge, heroicContextProvider, helmsmanConfirm)
 )

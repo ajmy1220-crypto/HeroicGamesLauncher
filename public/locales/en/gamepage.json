@@ -130,7 +130,13 @@
                 "wine": "Reinstall Wine variant",
                 "winetricks": "Install {{verb}}"
             },
-            "apply-soon": "One-click apply is coming soon — these are read-only suggestions for now.",
+            "apply": {
+                "applying": "Applying…",
+                "btn": "Apply",
+                "cancelled": "Cancelled.",
+                "executed": "Applied. Restart the game, then run diagnosis again.",
+                "failed": "Apply failed"
+            },
             "confidence": "confidence",
             "diagnose": "Diagnose",
             "diagnosing": "Diagnosing…",

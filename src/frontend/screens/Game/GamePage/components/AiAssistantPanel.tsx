@@ -1,11 +1,12 @@
 /**
  * AiAssistantPanel.tsx
  * ------------------------------------------------------------------
- * Helmsman — 遊戲頁的 AI 診斷面板（Phase 4 唯讀切片）。
+ * Helmsman — 遊戲頁的 AI 診斷面板。
  *
  * 只送 { appName, runner }；context + log 由後端權威組（window.api.helmsmanDiagnose）。
- * 唯讀：顯示判定（verdict）+ 偵測到的問題（signals，含命中 log 行）+ 建議修正（唯讀，
- * 一鍵套用待 Phase 5 的可信確認回路）。不接 LLM 對話（aiAdvisor 待後）。
+ * 顯示判定（verdict）+ 偵測到的問題（signals，含命中 log 行）+ 建議修正。
+ * 建議可【套用】（helmsmanApplyAction）：須確認的動作由後端彈【原生確認框】（§12.9 主程序
+ * 權威，renderer 無法偽造）；install_winetricks 白名單免確認。不接 LLM 對話（aiAdvisor 待後）。
  */
 
 import './AiAssistantPanel.css'
@@ -15,7 +16,8 @@ import { useTranslation } from 'react-i18next'
 
 import type { TFunction } from 'i18next'
 import type { Runner } from 'common/types'
-import type { DiagnoseResult } from 'backend/ai/orchestrator'
+import type { DiagnoseResult, HelmsmanError } from 'backend/ai/orchestrator'
+import type { ExecutionResult } from 'backend/ai/actionExecutor'
 import type {
   Backend,
   DetectedSignal,
@@ -29,6 +31,8 @@ interface AiAssistantPanelProps {
   runner: Runner
 }
 
+type ApplyOutcome = { tone: 'ok' | 'warn' | 'err'; text: string }
+
 export default function AiAssistantPanel({
   appName,
   runner
@@ -37,10 +41,16 @@ export default function AiAssistantPanel({
   const [result, setResult] = useState<DiagnoseResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // apply 並發鎖：非 null = 正在套用第 N 個建議；期間全部 apply / diagnose 按鈕 disabled。
+  const [applyingIndex, setApplyingIndex] = useState<number | null>(null)
+  const [applyResults, setApplyResults] = useState<
+    Record<number, ApplyOutcome>
+  >({})
 
   const runDiagnosis = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setApplyResults({})
     try {
       const res = await window.api.helmsmanDiagnose({ appName, runner })
       if ('error' in res) {
@@ -58,6 +68,35 @@ export default function AiAssistantPanel({
     }
   }, [appName, runner, t])
 
+  const applyAction = useCallback(
+    async (action: RecommendedAction, index: number) => {
+      setApplyingIndex(index)
+      try {
+        const res = await window.api.helmsmanApplyAction({
+          appName,
+          runner,
+          action
+        })
+        setApplyResults((prev) => ({ ...prev, [index]: describeApply(res, t) }))
+      } catch (e) {
+        setApplyResults((prev) => ({
+          ...prev,
+          [index]: {
+            tone: 'err',
+            text:
+              e instanceof Error
+                ? e.message
+                : t('game.ai.apply.failed', 'Apply failed')
+          }
+        }))
+      } finally {
+        setApplyingIndex(null)
+      }
+    },
+    [appName, runner, t]
+  )
+
+  const busy = loading || applyingIndex !== null
   const hasSignals = (result?.analysis.signals.length ?? 0) > 0
 
   return (
@@ -70,7 +109,7 @@ export default function AiAssistantPanel({
           type="button"
           className="button is-primary"
           onClick={runDiagnosis}
-          disabled={loading}
+          disabled={busy}
         >
           {loading
             ? t('game.ai.diagnosing', 'Diagnosing…')
@@ -101,7 +140,13 @@ export default function AiAssistantPanel({
           {hasSignals ? (
             <>
               <Signals signals={result.analysis.signals} t={t} />
-              <Recommendations actions={result.recommendation.actions} t={t} />
+              <Recommendations
+                actions={result.recommendation.actions}
+                applyingIndex={applyingIndex}
+                applyResults={applyResults}
+                onApply={applyAction}
+                t={t}
+              />
             </>
           ) : (
             <p className="aiPanelHint">
@@ -155,9 +200,15 @@ function Signals({ signals, t }: { signals: DetectedSignal[]; t: TFunction }) {
 
 function Recommendations({
   actions,
+  applyingIndex,
+  applyResults,
+  onApply,
   t
 }: {
   actions: RecommendedAction[]
+  applyingIndex: number | null
+  applyResults: Record<number, ApplyOutcome>
+  onApply: (action: RecommendedAction, index: number) => void
   t: TFunction
 }) {
   if (actions.length === 0) return null
@@ -166,29 +217,89 @@ function Recommendations({
       <p className="aiPanelSectionTitle">
         {t('game.ai.recommendations', 'Suggested fixes')}
       </p>
-      {actions.map((act, i) => (
-        <div key={i} className="aiPanelAction">
-          {act.kind !== 'none' && (
-            <p className="aiPanelActionTitle">{actionTitle(act, t)}</p>
-          )}
-          <p className="aiPanelActionReason">
-            {act.reason}
-            {act.kind !== 'none' &&
-              ` · ${t('game.ai.confidence', 'confidence')} ${act.confidence.toFixed(1)}`}
-          </p>
-        </div>
-      ))}
-      <p className="aiPanelNote">
-        {t(
-          'game.ai.apply-soon',
-          'One-click apply is coming soon — these are read-only suggestions for now.'
-        )}
-      </p>
+      {actions.map((act, i) => {
+        const outcome = applyResults[i]
+        return (
+          <div key={i} className="aiPanelAction">
+            <div className="aiPanelActionBody">
+              {act.kind !== 'none' && (
+                <p className="aiPanelActionTitle">{actionTitle(act, t)}</p>
+              )}
+              <p className="aiPanelActionReason">
+                {act.reason}
+                {act.kind !== 'none' &&
+                  ` · ${t('game.ai.confidence', 'confidence')} ${act.confidence.toFixed(1)}`}
+              </p>
+              {outcome && (
+                <p className="aiPanelApplyResult" data-tone={outcome.tone}>
+                  {outcome.text}
+                </p>
+              )}
+            </div>
+            {isApplyable(act.kind) && (
+              <button
+                type="button"
+                className="button is-primary aiPanelApplyBtn"
+                onClick={() => onApply(act, i)}
+                disabled={applyingIndex !== null}
+              >
+                {applyingIndex === i
+                  ? t('game.ai.apply.applying', 'Applying…')
+                  : t('game.ai.apply.btn', 'Apply')}
+              </button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-// ── 純工具（verdict / severity / action 顯示文案）─────────────────────
+// ── 純工具 ──────────────────────────────────────────────────────────
+
+/**
+ * 哪些 kind 出 apply 按鈕。install_steam 不出（bridge 的 STEAM_SETUP_EXE 是 SEED 會 throw，
+ * 避免保證失敗的按鈕）；none 是提示/占位不可執行。
+ */
+const APPLYABLE_KINDS: ReadonlySet<RecommendedAction['kind']> = new Set([
+  'switch_backend',
+  'install_winetricks',
+  'install_dxvk',
+  'reinstall_wine_variant',
+  'change_setting'
+])
+
+function isApplyable(kind: RecommendedAction['kind']): boolean {
+  return APPLYABLE_KINDS.has(kind)
+}
+
+/** ExecutionResult | HelmsmanError → 顯示用的色調 + 文案。 */
+function describeApply(
+  res: ExecutionResult | HelmsmanError,
+  t: TFunction
+): ApplyOutcome {
+  if ('error' in res) return { tone: 'err', text: res.error }
+  switch (res.status) {
+    case 'executed':
+      // 不自動 re-diagnose：log 在遊戲重跑前不會變，重診會給相同結果誤導使用者。
+      return {
+        tone: 'ok',
+        text: t(
+          'game.ai.apply.executed',
+          'Applied. Restart the game, then run diagnosis again.'
+        )
+      }
+    case 'blocked_needs_confirmation':
+      // 新架構下＝使用者在原生確認框按了「否」。
+      return { tone: 'warn', text: t('game.ai.apply.cancelled', 'Cancelled.') }
+    case 'blocked_steam_lock':
+      // 設計性阻擋（§11），非錯誤；detail 已是人話。
+      return { tone: 'warn', text: res.detail }
+    default:
+      // failed / invalid_params / skipped_not_executable：detail 已收口，不洩漏堆疊。
+      return { tone: 'err', text: res.detail }
+  }
+}
 
 function verdictMeta(
   v: Verdict,

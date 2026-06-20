@@ -24,8 +24,10 @@ import { GameConfig } from 'backend/game_config'
 import { getSystemInfo } from 'backend/utils/systeminfo'
 import { isMac, isIntelMac } from 'backend/constants/environment'
 import { getLogFilePath } from 'backend/logger/paths'
+import { getGameInfo } from 'backend/storeManagers/sideload/games'
 
 import { deriveBackend } from './deriveBackend'
+import { isSteamSideloadInfo } from './steamSideload'
 
 import type { ContextProvider } from './orchestrator'
 import type { Arch, GameContext, Runner } from './types'
@@ -43,7 +45,8 @@ function resolveArch(): Arch {
 
 /**
  * 權威地組出 GameContext（全部呼叫 Heroic 既有函式）。
- * directxVersion / is32bit / isWindowsSteamClient 無權威來源 → [SEED]（見下）。
+ * isWindowsSteamClient 由 sideload GameInfo 權威判（§11）；directxVersion / is32bit 仍無
+ * 權威來源 → [SEED] 不帶。
  */
 export async function assembleGameContext(
   appName: string,
@@ -61,10 +64,10 @@ export async function assembleGameContext(
     wineVersion: gs.wineVersion.name,
     osVersion: systemInfo.OS.version,
     arch: resolveArch(),
-    // [SEED §11] sideload GameInfo 無「Windows Steam 客戶端」旗標。唯讀診斷不寫 prefix，
-    // Steam 鎖只在 apply 路徑（actionExecutor mutatesSteamPrefix）才檢查，故固定 false 安全；
-    // 不以 title 字串瞎猜（types.ts §11 反對）。Phase 5 開 apply 前須補權威來源。
-    isWindowsSteamClient: false
+    // §11：apply 上線後 Steam 鎖須權威——只有 sideload 可能是 Windows Steam 客戶端，讀其
+    // GameInfo 以 isSteamSideloadInfo 判（fail-safe）；非 sideload runner 必非 Steam 客戶端。
+    isWindowsSteamClient:
+      runner === 'sideload' ? isSteamSideloadInfo(getGameInfo(appName)) : false
     // [SEED] directxVersion / is32bit 無權威來源 → 不帶（規則層對未知 dx 有定義行為）。
   }
 }

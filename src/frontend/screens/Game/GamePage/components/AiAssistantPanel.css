@@ -110,9 +110,35 @@
   font-size: 0.9em;
 }
 
-.aiPanelNote {
-  color: var(--text-secondary);
+.aiPanelAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.aiPanelActionBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.aiPanelApplyBtn {
+  flex-shrink: 0;
+}
+
+.aiPanelApplyResult {
+  margin: 4px 0 0;
   font-size: 0.85em;
-  font-style: italic;
-  margin: 0;
+}
+
+.aiPanelApplyResult[data-tone='ok'] {
+  color: var(--success);
+}
+
+.aiPanelApplyResult[data-tone='warn'] {
+  color: var(--text-secondary);
+}
+
+.aiPanelApplyResult[data-tone='err'] {
+  color: var(--danger);
 }

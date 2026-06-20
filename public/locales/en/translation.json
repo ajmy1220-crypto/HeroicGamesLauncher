@@ -446,6 +446,13 @@
         "show_updates_only": "Show games with updates only",
         "uncategorized": "Uncategorized"
     },
+    "helmsman": {
+        "confirm": {
+            "irreversible": "This modifies the game and cannot be undone.",
+            "reversible": "This changes game settings.",
+            "title": "Apply this fix?"
+        }
+    },
     "help": {
         "advertiseAvxForRosetta": "Enables AVX instruction set support when running Windows games through Rosetta on Apple Silicon Macs. This may be required for some games like Death Stranding that need AVX support.",
         "amdfsr": "AMD's FSR helps boost framerate by upscaling lower resolutions in Fullscreen Mode. Image quality increases from 5 to 1 at the cost of a slight performance hit. Enabling may improve performance.",

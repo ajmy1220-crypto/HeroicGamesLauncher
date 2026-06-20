@@ -75,6 +75,10 @@ const makeFakeBridge = () => ({
   changeSetting: jest.fn(() => Promise.resolve())
 })
 
+/** fake confirm（jest.fn 可設回 true/false），對應注入 runApply 的第四參。 */
+const makeFakeConfirm = (result: boolean) =>
+  jest.fn(() => Promise.resolve(result))
+
 /** runApply / runDiagnose 回 ExecutionResult 或 HelmsmanError——收斂成前者（否則直接失敗）。 */
 function asExecution(res: ExecutionResult | HelmsmanError): ExecutionResult {
   if ('error' in res) {
@@ -179,6 +183,78 @@ describe('runApply — §12.9 確認閘硬化', () => {
     expect(bridge.installWinetricks).toHaveBeenCalledWith(
       expect.objectContaining({ verb: 'd3dcompiler_47' })
     )
+  })
+})
+
+// ── confirm 注入釘樁：§12.9 主程序權威確認 ──────────────────────────
+
+describe('runApply — confirm 注入（§12.9 主程序權威）', () => {
+  test('switch_backend + confirm→true → executed、bridge 呼叫、confirm 恰 1 次', async () => {
+    const bridge = makeFakeBridge()
+    const confirm = makeFakeConfirm(true)
+    const res = asExecution(
+      await runApply(
+        { ...APP, action: switchAction },
+        bridge,
+        makeFakeProvider(),
+        confirm
+      )
+    )
+    expect(res.status).toBe('executed')
+    expect(bridge.switchBackend).toHaveBeenCalledTimes(1)
+    expect(confirm).toHaveBeenCalledTimes(1) // 釘：confirm 真的被 await
+  })
+
+  test('switch_backend + confirm→false → blocked_needs_confirmation、bridge 未呼叫', async () => {
+    const bridge = makeFakeBridge()
+    const confirm = makeFakeConfirm(false)
+    const res = asExecution(
+      await runApply(
+        { ...APP, action: switchAction },
+        bridge,
+        makeFakeProvider(),
+        confirm
+      )
+    )
+    expect(res.status).toBe('blocked_needs_confirmation')
+    expect(bridge.switchBackend).not.toHaveBeenCalled()
+    expect(confirm).toHaveBeenCalledTimes(1)
+  })
+
+  test('install_winetricks（白名單）→ executed、confirm 0 次（免確認繞過）', async () => {
+    const bridge = makeFakeBridge()
+    const confirm = makeFakeConfirm(true)
+    const res = asExecution(
+      await runApply(
+        { ...APP, action: winetricksAction },
+        bridge,
+        makeFakeProvider(),
+        confirm
+      )
+    )
+    expect(res.status).toBe('executed')
+    // 釘：白名單免確認——若把 confirm 加到所有路徑即破白名單 → 變紅。
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  test('§11：steam ctx + switch_backend → blocked_steam_lock、confirm 0 次（鎖在 confirm 前）', async () => {
+    const bridge = makeFakeBridge()
+    const confirm = makeFakeConfirm(true)
+    const steamProvider = makeFakeProvider({
+      ...baseContext,
+      isWindowsSteamClient: true
+    })
+    const res = asExecution(
+      await runApply(
+        { ...APP, action: switchAction },
+        bridge,
+        steamProvider,
+        confirm
+      )
+    )
+    expect(res.status).toBe('blocked_steam_lock')
+    expect(confirm).not.toHaveBeenCalled() // 釘：Steam 鎖短路在 confirm 之前
+    expect(bridge.switchBackend).not.toHaveBeenCalled()
   })
 })
 

@@ -81,6 +81,12 @@ export interface ExecuteOptions {
   dryRun?: boolean
   /** true → 使用者已確認（通過確認閘）。預設 false：須確認的動作一律先擋。 */
   confirmed?: boolean
+  /**
+   * 須確認的動作在確認閘呼叫此 callback，取得【主程序權威】的使用者確認（§12.9）。
+   * 由呼叫端注入（live 模式＝原生 dialog；測試＝fake）；回 true 才執行、false / 未注入則擋。
+   * confirmed:true 仍直接放行（已預先確認路徑），不呼叫此 callback。
+   */
+  confirm?: (plan: PlannedCall, context: GameContext) => Promise<boolean>
 }
 
 // ── 純函式：規劃（planAction / planAll）──────────────────────────
@@ -251,13 +257,19 @@ export async function executeAction(
     }
   }
 
-  // 4｜確認閘（§6.4 / §12.9）：須確認但未確認 → 擋下，絕不靜默套用。
+  // 4｜確認閘（§6.4 / §12.9）：須確認且未預先確認 → 取【主程序權威】確認（opts.confirm）。
+  //    confirm 回 false（或未注入）一律擋下，絕不靜默套用。Steam 鎖（步驟 3）已在此之前，
+  //    故 Steam 客戶端永遠擋在 confirm 之前、不會先彈確認框再被擋。
   if (plan.requiresConfirmation && opts.confirmed !== true) {
-    return {
-      action,
-      plan,
-      status: 'blocked_needs_confirmation',
-      detail: '此動作不可逆 / 會改系統，須使用者確認後才能套用'
+    const confirmed = opts.confirm ? await opts.confirm(plan, context) : false
+    if (!confirmed) {
+      return {
+        action,
+        plan,
+        status: 'blocked_needs_confirmation',
+        detail:
+          '此動作不可逆 / 會改系統，須使用者確認後才能套用（未確認或已取消）'
+      }
     }
   }
 
