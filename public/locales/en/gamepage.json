@@ -135,7 +135,14 @@
                 "asking": "Asking AI…",
                 "btn": "Ask AI",
                 "disclaimer": "AI suggestions — review before applying.",
+                "examples": {
+                    "blackscreen": "Black screen — no game window",
+                    "cjk": "Chinese / Japanese / Korean text shows as boxes",
+                    "crash": "Crashes right after launch"
+                },
+                "examplesLabel": "Common problems:",
                 "failed": "AI request failed",
+                "placeholder": "Describe the problem in your own words — e.g. \"Chinese text shows as boxes\". Leave blank to let AI judge from the log.",
                 "title": "Ask AI"
             },
             "apply": {

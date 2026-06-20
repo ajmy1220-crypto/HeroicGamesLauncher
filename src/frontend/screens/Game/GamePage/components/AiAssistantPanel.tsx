@@ -106,27 +106,36 @@ export default function AiAssistantPanel({
     [appName, runner, t]
   )
 
-  const askAi = useCallback(async () => {
-    setAdvising(true)
-    setAdviceError(null)
-    try {
-      const res = await window.api.helmsmanAdvise({ appName, runner })
-      if ('error' in res) {
-        setAdviceError(res.error)
-        setAdvice(null)
-      } else {
-        setAdvice(res)
+  const askAi = useCallback(
+    async (userQuestion?: string) => {
+      setAdvising(true)
+      setAdviceError(null)
+      try {
+        // 空白問題＝模糊判斷模式（後端對 undefined / 空字串走 evidence 判斷）。
+        const trimmed = userQuestion?.trim()
+        const res = await window.api.helmsmanAdvise(
+          trimmed
+            ? { appName, runner, userQuestion: trimmed }
+            : { appName, runner }
+        )
+        if ('error' in res) {
+          setAdviceError(res.error)
+          setAdvice(null)
+        } else {
+          setAdvice(res)
+        }
+      } catch (e) {
+        setAdviceError(
+          e instanceof Error
+            ? e.message
+            : t('game.ai.advise.failed', 'AI request failed')
+        )
+      } finally {
+        setAdvising(false)
       }
-    } catch (e) {
-      setAdviceError(
-        e instanceof Error
-          ? e.message
-          : t('game.ai.advise.failed', 'AI request failed')
-      )
-    } finally {
-      setAdvising(false)
-    }
-  }, [appName, runner, t])
+    },
+    [appName, runner, t]
+  )
 
   const busy = loading || advising || applyingIndex !== null
   const hasSignals = (result?.analysis.signals.length ?? 0) > 0
@@ -319,13 +328,26 @@ function AiAdvice({
   advice: AdvisorResult | null
   advising: boolean
   adviceError: string | null
-  onAsk: () => void
+  onAsk: (userQuestion?: string) => void
   busy: boolean
   applyingIndex: number | null
   applyResults: Record<number, ApplyOutcome>
   onApply: (action: RecommendedAction, index: number) => void
   t: TFunction
 }) {
+  // 自然語言問題：空白＝對 log/evidence 模糊判斷；有字＝自然語言除錯（後端 runAdvise 已支援）。
+  // 視覺型問題（中文變方格、黑畫面…）log 裡常沒 error、規則層抓不到，正是這個輸入框的價值。
+  const [question, setQuestion] = useState('')
+  // 常見問題捷徑：點一下填入輸入框（不自動送，讓使用者檢視 / 編輯後再按 Ask AI）。用靜態
+  // t() 呼叫（非動態 key）讓 i18next-parser 能靜態抽取、pre-push i18n 收斂。
+  const commonQuestions = [
+    t(
+      'game.ai.advise.examples.cjk',
+      'Chinese / Japanese / Korean text shows as boxes'
+    ),
+    t('game.ai.advise.examples.crash', 'Crashes right after launch'),
+    t('game.ai.advise.examples.blackscreen', 'Black screen — no game window')
+  ]
   return (
     <div className="aiPanelSection">
       <div className="aiPanelAdviseHead">
@@ -335,7 +357,7 @@ function AiAdvice({
         <button
           type="button"
           className="button is-primary aiPanelApplyBtn"
-          onClick={onAsk}
+          onClick={() => onAsk(question)}
           disabled={busy}
         >
           {advising
@@ -344,6 +366,40 @@ function AiAdvice({
               ? t('game.ai.advise.again', 'Ask again')
               : t('game.ai.advise.btn', 'Ask AI')}
         </button>
+      </div>
+      <textarea
+        className="aiPanelAdviseInput"
+        value={question}
+        onChange={(e) => setQuestion(e.target.value)}
+        onKeyDown={(e) => {
+          // Cmd/Ctrl+Enter 送出；單純 Enter 仍換行（textarea 預設）。
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !busy) {
+            e.preventDefault()
+            onAsk(question)
+          }
+        }}
+        placeholder={t(
+          'game.ai.advise.placeholder',
+          'Describe the problem in your own words — e.g. "Chinese text shows as boxes". Leave blank to let AI judge from the log.'
+        )}
+        disabled={busy}
+        rows={2}
+      />
+      <div className="aiPanelChips">
+        <span className="aiPanelExamplesLabel">
+          {t('game.ai.advise.examplesLabel', 'Common problems:')}
+        </span>
+        {commonQuestions.map((text) => (
+          <button
+            key={text}
+            type="button"
+            className="aiPanelChip"
+            onClick={() => setQuestion(text)}
+            disabled={busy}
+          >
+            {text}
+          </button>
+        ))}
       </div>
       {adviceError && (
         <p className="aiPanelApplyResult" data-tone="err">

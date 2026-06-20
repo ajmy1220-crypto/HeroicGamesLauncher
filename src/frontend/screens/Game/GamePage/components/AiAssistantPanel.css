@@ -156,3 +156,58 @@
   white-space: pre-wrap;
   line-height: 1.5;
 }
+
+.aiPanelAdviseInput {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 2.6em;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--background-light);
+  background: var(--background-darker);
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.aiPanelAdviseInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.aiPanelAdviseInput:disabled {
+  opacity: 0.6;
+}
+
+.aiPanelChips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aiPanelExamplesLabel {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.aiPanelChip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--background-light);
+  background: var(--background-darker);
+  color: var(--text-secondary);
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.aiPanelChip:hover:not(:disabled) {
+  color: inherit;
+  border-color: var(--accent);
+}
+
+.aiPanelChip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
